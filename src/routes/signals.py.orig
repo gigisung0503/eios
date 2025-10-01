@@ -1,0 +1,471 @@
+from flask import Blueprint, request, jsonify
+from src.models.signal import db, RawSignal, ProcessedSignal, UserConfig
+from src.services.eios_fetcher import EIOSFetcher
+from src.services.signal_processor import SignalProcessor
+import logging
+
+logger = logging.getLogger("signals_routes")
+
+signals_bp = Blueprint('signals', __name__)
+
+@signals_bp.route('/signals/fetch', methods=['POST'])
+def fetch_signals():
+    """
+    Trigger manual signal fetching and processing.
+    """
+    try:
+        # Get user-defined tags
+        tags_config = UserConfig.query.filter_by(key='tags').first()
+        if tags_config and tags_config.value:
+            tags = [tag.strip() for tag in tags_config.value.split(',') if tag.strip()]
+        else:
+            # Default tags if none configured
+            tags = ["ephem emro"]
+        
+        logger.info(f"Fetching signals with tags: {tags}")
+        
+        # Fetch signals from EIOS
+        fetcher = EIOSFetcher()
+        articles = fetcher.fetch_signals(tags)
+        
+        if not articles:
+            return jsonify({
+                'success': True,
+                'message': 'No new signals found',
+                'processed_count': 0,
+                'true_signals_count': 0
+            })
+        
+        # Process ALL signals (no hard cap)
+        processor = SignalProcessor()
+        processed_signals = processor.process_signals_batch(articles, batch_size=None)
+        
+        # Count true signals (is_signal = 'Yes')
+        true_signals_count = sum(1 for signal in processed_signals if signal.is_signal == 'Yes')
+        
+        return jsonify({
+            'success': True,
+            'message': f'Successfully processed {len(processed_signals)} signals',
+            'processed_count': len(processed_signals),
+            'true_signals_count': true_signals_count
+        })
+        
+    except Exception as e:
+        logger.error(f"Error fetching signals: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'Error fetching signals: {str(e)}'
+        }), 500
+
+@signals_bp.route('/signals/processed', methods=['GET'])
+def get_processed_signals():
+    """
+    Retrieve processed signals for display with optional filtering by status, signal flag and search term.
+
+    Query parameters:
+        status: one of 'all', 'new', 'flagged', 'discarded' (default 'all')
+        signals_only: boolean flag to include only true signals (is_signal == 'Yes')
+        search: optional free text to search across raw and processed signal fields
+    """
+    try:
+        # Get query parameters
+        status_filter = request.args.get('status', 'all')  # 'all', 'new', 'flagged', 'discarded'
+        signals_only = request.args.get('signals_only', 'false').lower() == 'true'
+        search_term = request.args.get('search', None)
+
+        # Build query
+        query = ProcessedSignal.query
+
+        # Include only true signals if requested
+        if signals_only:
+            query = query.filter(ProcessedSignal.is_signal == 'Yes')
+
+        # Filter by status if not 'all'
+        if status_filter != 'all':
+            query = query.filter(ProcessedSignal.status == status_filter)
+
+        # Apply search across multiple fields if a search term is provided. Join with RawSignal to
+        # search titles and summaries. Using ilike for case-insensitive partial matching.
+        if search_term:
+            from sqlalchemy import or_
+            # Escape percent signs in search term if present
+            escaped = search_term.replace('%', '\\%').replace('_', '\\_')
+            pattern = f"%{escaped}%"
+            query = query.join(RawSignal, ProcessedSignal.raw_signal).filter(
+                or_(
+                    RawSignal.original_title.ilike(pattern),
+                    RawSignal.title.ilike(pattern),
+                    RawSignal.translated_description.ilike(pattern),
+                    RawSignal.translated_abstractive_summary.ilike(pattern),
+                    RawSignal.abstractive_summary.ilike(pattern),
+                    ProcessedSignal.extracted_countries.ilike(pattern),
+                    ProcessedSignal.extracted_hazards.ilike(pattern),
+                    ProcessedSignal.risk_signal_assessment.ilike(pattern)
+                )
+            )
+
+        # Order by processed_at descending
+        signals = query.order_by(ProcessedSignal.processed_at.desc()).all()
+
+        return jsonify({
+            'success': True,
+            'signals': [signal.to_dict() for signal in signals],
+            'count': len(signals)
+        })
+
+    except Exception as e:
+        logger.error(f"Error retrieving processed signals: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'Error retrieving signals: {str(e)}'
+        }), 500
+
+@signals_bp.route('/signals/tags', methods=['GET', 'POST'])
+def manage_tags():
+    """
+    Get or update user-defined tags.
+    """
+    if request.method == 'GET':
+        try:
+            tags_config = UserConfig.query.filter_by(key='tags').first()
+            tags = tags_config.value if tags_config else "ephem emro"
+            
+            return jsonify({
+                'success': True,
+                'tags': tags
+            })
+            
+        except Exception as e:
+            logger.error(f"Error retrieving tags: {e}")
+            return jsonify({
+                'success': False,
+                'message': f'Error retrieving tags: {str(e)}'
+            }), 500
+    
+    elif request.method == 'POST':
+        try:
+            data = request.get_json()
+            tags = data.get('tags', '').strip()
+            
+            # Validate tags format (comma-separated)
+            if not tags:
+                return jsonify({
+                    'success': False,
+                    'message': 'Tags cannot be empty'
+                }), 400
+            
+            # Update or create tags configuration
+            tags_config = UserConfig.query.filter_by(key='tags').first()
+            if tags_config:
+                tags_config.value = tags
+            else:
+                tags_config = UserConfig(key='tags', value=tags)
+                db.session.add(tags_config)
+            
+            db.session.commit()
+            
+            return jsonify({
+                'success': True,
+                'message': 'Tags updated successfully',
+                'tags': tags
+            })
+            
+        except Exception as e:
+            logger.error(f"Error updating tags: {e}")
+            return jsonify({
+                'success': False,
+                'message': f'Error updating tags: {str(e)}'
+            }), 500
+
+@signals_bp.route('/signals/config', methods=['GET', 'POST'])
+def manage_config():
+    """
+    Get or update configuration values for the AI provider, API settings and risk prompt.
+
+    GET: Returns current values for provider (AI_PROVIDER), per‑provider API keys/bases,
+    model (AI_MODEL) and risk evaluation prompt. Missing values are returned as empty strings.
+
+    POST: Accepts any combination of configuration fields and updates them accordingly. Supported
+    JSON keys include:
+        - provider: one of "openai", "deepseek" or "local"
+        - openai_api_key, openai_api_base
+        - deepseek_api_key, deepseek_api_base
+        - local_api_key, local_api_base
+        - ai_model
+        - risk_prompt (alias risk_evaluation_prompt)
+        - api_key, api_base: legacy names for OpenAI settings
+    """
+    if request.method == 'GET':
+        try:
+            # Helper to fetch config values; return empty string if missing
+            def get_cfg(key):
+                entry = UserConfig.query.filter_by(key=key).first()
+                return entry.value if entry else ''
+
+            config = {
+                'provider': get_cfg('AI_PROVIDER') or 'openai',
+                'openai_api_key': get_cfg('OPENAI_API_KEY'),
+                'openai_api_base': get_cfg('OPENAI_API_BASE'),
+                'deepseek_api_key': get_cfg('DEEPSEEK_API_KEY'),
+                'deepseek_api_base': get_cfg('DEEPSEEK_API_BASE'),
+                'local_api_key': get_cfg('LOCAL_LLM_API_KEY'),
+                'local_api_base': get_cfg('LOCAL_LLM_API_BASE'),
+                'ai_model': get_cfg('AI_MODEL'),
+                'risk_prompt': get_cfg('risk_evaluation_prompt')
+            }
+            return jsonify({'success': True, 'config': config})
+        except Exception as e:
+            logger.error(f"Error retrieving config: {e}")
+            return jsonify({'success': False, 'message': f'Error retrieving config: {str(e)}'}), 500
+
+    elif request.method == 'POST':
+        try:
+            data = request.get_json() or {}
+
+            # Map incoming JSON keys to UserConfig keys
+            key_map = {
+                'provider': 'AI_PROVIDER',
+                'openai_api_key': 'OPENAI_API_KEY',
+                'openai_api_base': 'OPENAI_API_BASE',
+                'deepseek_api_key': 'DEEPSEEK_API_KEY',
+                'deepseek_api_base': 'DEEPSEEK_API_BASE',
+                'local_api_key': 'LOCAL_LLM_API_KEY',
+                'local_api_base': 'LOCAL_LLM_API_BASE',
+                'ai_model': 'AI_MODEL',
+                # Legacy keys for backward compatibility (OpenAI only)
+                'api_key': 'OPENAI_API_KEY',
+                'api_base': 'OPENAI_API_BASE',
+                'risk_prompt': 'risk_evaluation_prompt',
+                'risk_evaluation_prompt': 'risk_evaluation_prompt'
+            }
+
+            # Helper to set or update a config value
+            def set_config(cfg_key, value):
+                if value is None:
+                    return
+                # Convert booleans/other types to strings for storage
+                if isinstance(value, bool):
+                    value = 'true' if value else 'false'
+                config_entry = UserConfig.query.filter_by(key=cfg_key).first()
+                if config_entry:
+                    config_entry.value = value
+                else:
+                    config_entry = UserConfig(key=cfg_key, value=value)
+                    db.session.add(config_entry)
+
+            # Iterate through provided data and update corresponding config entries
+            for incoming_key, incoming_value in data.items():
+                if incoming_key in key_map:
+                    set_config(key_map[incoming_key], incoming_value)
+
+            db.session.commit()
+            return jsonify({'success': True, 'message': 'Configuration updated successfully'})
+        except Exception as e:
+            logger.error(f"Error updating config: {e}")
+            return jsonify({'success': False, 'message': f'Error updating config: {str(e)}'}), 500
+
+@signals_bp.route('/signals/<int:signal_id>/flag', methods=['POST'])
+def flag_signal(signal_id):
+    """
+    Flag a specific signal.
+    """
+    try:
+        signal = ProcessedSignal.query.get_or_404(signal_id)
+        signal.status = 'flagged'
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': f'Signal {signal_id} flagged successfully'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error flagging signal {signal_id}: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'Error flagging signal: {str(e)}'
+        }), 500
+
+@signals_bp.route('/signals/<int:signal_id>/discard', methods=['POST'])
+def discard_signal(signal_id):
+    """
+    Discard a specific signal.
+    """
+    try:
+        signal = ProcessedSignal.query.get_or_404(signal_id)
+        signal.status = 'discarded'
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': f'Signal {signal_id} discarded successfully'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error discarding signal {signal_id}: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'Error discarding signal: {str(e)}'
+        }), 500
+
+@signals_bp.route('/signals/discard-non-flagged', methods=['POST'])
+def discard_non_flagged_signals():
+    """
+    Discard all non-flagged signals that are currently 'new'.
+    """
+    try:
+        # Update all 'new' signals to 'discarded'
+        updated_count = ProcessedSignal.query.filter_by(status='new').update({'status': 'discarded'})
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': f'Successfully discarded {updated_count} non-flagged signals'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error discarding non-flagged signals: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'Error discarding signals: {str(e)}'
+        }), 500
+
+@signals_bp.route('/signals/batch-action', methods=['POST'])
+def batch_action_signals():
+    """
+    Perform batch actions on multiple signals.
+    """
+    try:
+        data = request.get_json()
+        signal_ids = data.get('signal_ids', [])
+        action = data.get('action')  # 'flag' or 'discard'
+        
+        if not signal_ids or not action:
+            return jsonify({
+                'success': False,
+                'message': 'signal_ids and action are required'
+            }), 400
+        
+        if action not in ['flag', 'discard']:
+            return jsonify({
+                'success': False,
+                'message': 'action must be either "flag" or "discard"'
+            }), 400
+        
+        # Update signals
+        status = 'flagged' if action == 'flag' else 'discarded'
+        updated_count = ProcessedSignal.query.filter(ProcessedSignal.id.in_(signal_ids)).update(
+            {'status': status}, synchronize_session=False)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': f'Successfully {action}ged {updated_count} signals'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error performing batch action: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'Error performing batch action: {str(e)}'
+        }), 500
+
+
+# -----------------------------------------------------------------------------
+# Additional API Endpoints for counts and aggregated statistics
+# -----------------------------------------------------------------------------
+
+@signals_bp.route('/signals/counts', methods=['GET'])
+def get_signal_counts():
+    """
+    Return counts of processed signals by status. Accepts an optional
+    `signals_only` query parameter (true/false) to include only true signals.
+    Example response:
+    {
+        "success": true,
+        "counts": {
+            "new": 10,
+            "flagged": 5,
+            "discarded": 3,
+            "all": 18
+        }
+    }
+    """
+    try:
+        signals_only = request.args.get('signals_only', 'false').lower() == 'true'
+        base_query = ProcessedSignal.query
+        if signals_only:
+            base_query = base_query.filter(ProcessedSignal.is_signal == 'Yes')
+        counts = {}
+        # Total count
+        counts['all'] = base_query.count()
+        for status in ['new', 'flagged', 'discarded']:
+            counts[status] = base_query.filter(ProcessedSignal.status == status).count()
+        return jsonify({'success': True, 'counts': counts})
+    except Exception as e:
+        logger.error(f"Error retrieving signal counts: {e}")
+        return jsonify({'success': False, 'message': f'Error retrieving counts: {str(e)}'}), 500
+
+
+@signals_bp.route('/signals/stats', methods=['GET'])
+def get_signal_stats():
+    """
+    Provide aggregated statistics for use in a dashboard. Returns counts by status,
+    counts of true/false signals, and top countries and hazards. The optional
+    `top_n` query parameter controls how many countries/hazards to return (default 10).
+
+    Example response:
+    {
+        "success": true,
+        "counts": {"new": 10, "flagged": 5, "discarded": 3, "all": 18},
+        "is_signal_counts": {"Yes": 12, "No": 6},
+        "top_countries": [{"country": "USA", "count": 4}, ...],
+        "top_hazards": [{"hazard": "outbreak", "count": 5}, ...]
+    }
+    """
+    try:
+        from collections import Counter
+        top_n = request.args.get('top_n', 10)
+        try:
+            top_n = int(top_n)
+        except ValueError:
+            top_n = 10
+
+        # Base query for processed signals
+        signals = ProcessedSignal.query.all()
+
+        # Counts by status
+        counts = {'new': 0, 'flagged': 0, 'discarded': 0}
+        is_signal_counts = {'Yes': 0, 'No': 0}
+        country_counter = Counter()
+        hazard_counter = Counter()
+        for s in signals:
+            counts[s.status] = counts.get(s.status, 0) + 1
+            is_signal_counts[s.is_signal] = is_signal_counts.get(s.is_signal, 0) + 1
+            # Count countries
+            if s.extracted_countries:
+                for c in [c.strip() for c in s.extracted_countries.split(';') if c.strip()]:
+                    country_counter[c] += 1
+            # Count hazards
+            if s.extracted_hazards:
+                for h in [h.strip() for h in s.extracted_hazards.split(';') if h.strip()]:
+                    hazard_counter[h] += 1
+
+        # Total signals
+        counts['all'] = sum(counts.values())
+
+        # Prepare top lists
+        top_countries = [{'country': k, 'count': v} for k, v in country_counter.most_common(top_n)]
+        top_hazards = [{'hazard': k, 'count': v} for k, v in hazard_counter.most_common(top_n)]
+
+        return jsonify({
+            'success': True,
+            'counts': counts,
+            'is_signal_counts': is_signal_counts,
+            'top_countries': top_countries,
+            'top_hazards': top_hazards
+        })
+    except Exception as e:
+        logger.error(f"Error retrieving stats: {e}")
+        return jsonify({'success': False, 'message': f'Error retrieving stats: {str(e)}'}), 500
+

@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PHI Detection Assistant Agent</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+
+    <style>
+        .signal-card {
+            transition: all 0.3s ease;
+        }
+        .signal-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+        }
+        .loading-spinner {
+            border: 3px solid #f3f4f6;
+            border-top: 3px solid #3b82f6;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .status-badge {
+            font-size: 0.75rem;
+            padding: 0.25rem 0.5rem;
+            border-radius: 9999px;
+            font-weight: 500;
+        }
+        .status-new { background-color: #dbeafe; color: #1e40af; }
+        .status-flagged { background-color: #fef3c7; color: #92400e; }
+        .status-discarded { background-color: #fee2e2; color: #991b1b; }
+        .floating-filter {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            background-color: #f9fafb; /* Match body background or choose a suitable color */
+            padding-top: 1rem;
+            padding-bottom: 1rem;
+            margin-bottom: 1rem;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- Header -->
+    <header class="bg-white shadow-sm border-b">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center py-4">
+                <div class="flex items-center">
+                    <i class="fas fa-signal text-blue-600 text-2xl mr-3"></i>
+                    <h1 class="text-2xl font-bold text-gray-900">PHI Detection Assistant Agent</h1>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <div class="flex items-center space-x-2">
+                        <span id="schedulerStatus" class="text-sm text-gray-600">Scheduler: Stopped</span>
+                        <button id="toggleSchedulerBtn" class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm transition-colors">
+                            Start
+                        </button>
+                    </div>
+                    <button id="fetchBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors">
+                        <i class="fas fa-download"></i>
+                        <span>Fetch Signals</span>
+                    </button>
+                    <button id="configBtn" class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors">
+                        <i class="fas fa-cog"></i>
+                        <span>Configure</span>
+                    </button>
+                    <a href="dashboard.html" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors">
+                        <i class="fas fa-chart-pie"></i>
+                        <span>Dashboard</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Status Bar -->
+        <div id="statusBar" class="mb-6 p-4 rounded-lg bg-blue-50 border border-blue-200 hidden">
+            <div class="flex items-center">
+                <div class="loading-spinner mr-3"></div>
+                <span id="statusText" class="text-blue-800">Processing...</span>
+            </div>
+        </div>
+
+        <!-- Filters and Actions -->
+        <div class="bg-white rounded-lg shadow-sm p-6 mb-6 floating-filter">
+            <div class="flex flex-col space-y-4">
+                <!-- First row of filters -->
+                <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between space-y-4 lg:space-y-0">
+                    <div class="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-4">
+                        <!-- Status filter. Counts will be injected into option labels. -->
+                        <select id="statusFilter" class="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                            <option value="all">All Signals</option>
+                            <option value="new">New Signals</option>
+                            <option value="flagged">Flagged Signals</option>
+                            <option value="discarded">Discarded Signals</option>
+                        </select>
+
+                        <!-- Filter to select Yes/No signals -->
+                        <select id="isSignalFilter" class="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                            <option value="all">All Flags</option>
+                            <option value="Yes">True Signals</option>
+                            <option value="No">Not Signals</option>
+                        </select>
+
+                        <!-- Search box -->
+                        <input type="text" id="searchInput" placeholder="Search..." class="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full sm:w-auto"/>
+                    </div>
+                    <div class="flex space-x-2">
+                        <button id="flagSelectedBtn" class="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                            <i class="fas fa-flag"></i>
+                            <span>Flag Selected</span>
+                        </button>
+                        <button id="discardSelectedBtn" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                            <i class="fas fa-trash"></i>
+                            <span>Discard Selected</span>
+                        </button>
+                        <button id="discardNonFlaggedBtn" class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors">
+                            <i class="fas fa-broom"></i>
+                            <span>Discard Non-Flagged</span>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Second row of filters -->
+                <div class="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-4">
+                    <!-- Country filter -->
+                    <div class="flex-1">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Countries</label>
+                        <div class="relative">
+                            <div id="countryFilter" class="border border-gray-300 rounded-lg px-3 py-2 max-h-32 overflow-y-auto bg-white">
+                                <!-- Countries will be loaded dynamically as checkboxes -->
+                            </div>
+                            <div class="mt-1 flex space-x-2">
+                                <button id="selectAllCountries" class="text-xs text-blue-600 hover:text-blue-800">Select All</button>
+                                <button id="clearAllCountries" class="text-xs text-red-600 hover:text-red-800">Clear All</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Date range filter -->
+                    <div class="flex-1">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Process Date Range</label>
+                        <div class="flex space-x-2">
+                            <input type="date" id="startDate" class="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent flex-1">
+                            <span class="self-center text-gray-500">to</span>
+                            <input type="date" id="endDate" class="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent flex-1">
+                        </div>
+                        <button id="clearDateFilter" class="mt-1 text-xs text-red-600 hover:text-red-800">Clear Dates</button>
+                    </div>
+                    
+                    <!-- Page size selector -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Page Size</label>
+                        <select id="pageSizeFilter" class="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                            <option value="10">10</option>
+                            <option value="20" selected>20</option>
+                            <option value="50">50</option>
+                            <option value="100">100</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pagination Controls -->
+        <div id="paginationTop" class="bg-white rounded-lg shadow-sm p-4 mb-4 hidden">
+            <div class="flex items-center justify-between">
+                <div class="text-sm text-gray-700">
+                    <span id="paginationInfo">Showing 1-20 of 100 signals</span>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <button id="prevPageBtn" class="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                        <i class="fas fa-chevron-left"></i> Previous
+                    </button>
+                    <span id="pageNumbers" class="flex space-x-1">
+                        <!-- Page numbers will be inserted here -->
+                    </span>
+                    <button id="nextPageBtn" class="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
+                        Next <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Signals List -->
+        <div id="signalsList" class="space-y-4">
+            <!-- Signals will be loaded here -->
+        </div>
+
+        <!-- Bottom Pagination Controls -->
+        <div id="paginationBottom" class="bg-white rounded-lg shadow-sm p-4 mt-4 hidden">
+            <div class="flex items-center justify-between">
+                <div class="text-sm text-gray-700">
+                    <span id="paginationInfoBottom">Showing 1-20 of 100 signals</span>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <button id="prevPageBtnBottom" class="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                        <i class="fas fa-chevron-left"></i> Previous
+                    </button>
+                    <span id="pageNumbersBottom" class="flex space-x-1">
+                        <!-- Page numbers will be inserted here -->
+                    </span>
+                    <button id="nextPageBtnBottom" class="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
+                        Next <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Empty State -->
+        <div id="emptyState" class="text-center py-12 hidden">
+            <i class="fas fa-inbox text-gray-400 text-6xl mb-4"></i>
+            <h3 class="text-lg font-medium text-gray-900 mb-2">No signals found</h3>
+            <p class="text-gray-500">Click "Fetch Signals" to load new signals from EIOS.</p>
+        </div>
+    </main>
+
+    <!-- Configuration Modal -->
+    <div id="configModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50">
+        <div class="flex items-center justify-center min-h-screen p-4">
+            <div class="bg-white rounded-lg shadow-xl max-w-md w-full">
+                <div class="p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-medium text-gray-900">Configuration</h3>
+                        <button id="closeConfigBtn" class="text-gray-400 hover:text-gray-600">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <div class="space-y-4">
+                        <!-- Tags configuration -->
+                        <div>
+                            <label for="tagsInput" class="block text-sm font-medium text-gray-700 mb-2">EIOS Tags (comma-separated)</label>
+                            <input type="text" id="tagsInput" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="ephem emro, other tag">
+                            <p class="text-xs text-gray-500 mt-1">Enter tags separated by commas</p>
+                        </div>
+
+                        <!-- AI provider selection -->
+                        <div>
+                            <label for="providerSelect" class="block text-sm font-medium text-gray-700 mb-2">AI Provider</label>
+                            <select id="providerSelect" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                <option value="openai">OpenAI</option>
+                                <option value="deepseek">DeepSeek</option>
+                                <option value="local">Local LLM</option>
+                            </select>
+                            <p class="text-xs text-gray-500 mt-1">Select which provider to use when evaluating signals</p>
+                        </div>
+
+                        <!-- OpenAI configuration -->
+                        <div id="openaiConfig">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">OpenAI API Key</label>
+                            <input type="text" id="openaiKeyInput" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Your OpenAI API key" />
+                            <label class="block text-sm font-medium text-gray-700 mb-2 mt-4">OpenAI API Base URL</label>
+                            <input type="text" id="openaiBaseInput" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="https://api.openai.com/v1" />
+                        </div>
+
+                        <!-- DeepSeek configuration -->
+                        <div id="deepseekConfig" class="hidden">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">DeepSeek API Key</label>
+                            <input type="text" id="deepseekKeyInput" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Your DeepSeek API key" />
+                            <label class="block text-sm font-medium text-gray-700 mb-2 mt-4">DeepSeek API Base URL</label>
+                            <input type="text" id="deepseekBaseInput" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="https://api.deepseek.com/v1" />
+                        </div>
+
+                        <!-- Local LLM configuration -->
+                        <div id="localConfig" class="hidden">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Local LLM API Key (optional)</label>
+                            <input type="text" id="localKeyInput" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Your Local LLM API key" />
+                            <label class="block text-sm font-medium text-gray-700 mb-2 mt-4">Local LLM API Base URL</label>
+                            <input type="text" id="localBaseInput" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="http://localhost:1234/v1" />
+                        </div>
+
+                        <!-- Model name -->
+                        <div>
+                            <label for="modelNameInput" class="block text-sm font-medium text-gray-700 mb-2">Model Name</label>
+                            <input type="text" id="modelNameInput" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Specify the model to use (e.g., gpt-4, gpt-3.5-turbo)" />
+                        </div>
+
+                        <!-- Risk evaluation prompt -->
+                        <div>
+                            <label for="riskEvaluationPrompt" class="block text-sm font-medium text-gray-700 mb-2">Risk Evaluation Prompt</label>
+                            <textarea id="riskEvaluationPrompt" rows="4" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Customize how the AI evaluates signals. Use {text} where the raw content should be inserted."></textarea>
+                        </div>
+
+                        <!-- Database Cleanup -->
+                        <div class="border-t border-gray-200 pt-4 mt-4">
+                            <h4 class="text-md font-medium text-gray-900 mb-2">Database Cleanup</h4>
+                            <label for="cleanupDate" class="block text-sm font-medium text-gray-700 mb-2">Remove signals processed before</label>
+                            <input type="date" id="cleanupDate" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                            <p class="text-xs text-gray-500 mt-1">All signals processed before this date will be permanently deleted</p>
+                            <div class="mt-4 flex space-x-2">
+                                <button id="previewCleanupBtn" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm transition-colors">Preview Cleanup</button>
+                                <button id="executeCleanupBtn" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm transition-colors" disabled>Execute Cleanup</button>
+                            </div>
+                            <p id="cleanupPreviewText" class="text-sm text-gray-600 mt-2"></p>
+                        </div>
+                    </div>
+                    <div class="mt-6 flex justify-end space-x-3">
+                        <button id="cancelConfigBtn" class="px-4 py-2 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors">Cancel</button>
+                        <button id="saveConfigBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors">Save</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="app.js"></script>
+</body>
+</html>
+
+

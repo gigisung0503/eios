@@ -1,0 +1,9 @@
+@@ -38,7 +38,7 @@
+ 
+         
+         # Process signals in batches of 50
+         processor = SignalProcessor()
+-        processed_signals = processor.process_signals_batch(articles, batch_size=50)
++        processed_signals = processor.process_signals_batch(articles, batch_size=None)
+         
+         # Count true signals (is_signal = 'Yes')

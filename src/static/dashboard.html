@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - PHI AI Assistant Agent</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- Header -->
+    <header class="bg-white shadow-sm border-b">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center py-4">
+                <div class="flex items-center">
+                    <i class="fas fa-chart-pie text-purple-600 text-2xl mr-3"></i>
+                    <h1 class="text-2xl font-bold text-gray-900">Dashboard</h1>
+                </div>
+                <div class="flex space-x-2">
+                    <a href="index.html" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors">
+                        <i class="fas fa-list"></i>
+                        <span>Signals</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+        <!-- Date Filter -->
+        <div class="bg-white rounded-lg shadow-sm p-6">
+            <h2 class="text-lg font-medium text-gray-900 mb-4">Filter by Process Date</h2>
+            <div class="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-4 items-end">
+                <div class="flex-1">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+                    <input type="date" id="dashboardStartDate" class="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent w-full">
+                </div>
+                <div class="flex-1">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+                    <input type="date" id="dashboardEndDate" class="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent w-full">
+                </div>
+                <div class="flex-1">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Signal Type</label>
+                    <select id="dashboardIsSignal" class="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent w-full">
+                        <option value="all">All Signals</option>
+                        <option value="Yes">True Signals</option>
+                        <option value="No">Not Signals</option>
+                    </select>
+                </div>
+                <div class="flex space-x-2">
+                    <button id="applyDateFilter" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition-colors">
+                        Apply Filter
+                    </button>
+                    <button id="clearDateFilter" class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors">
+                        Clear
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Summary Cards -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6" id="summaryCards">
+            <!-- Cards will be populated via JS -->
+        </div>
+
+        <!-- Top Lists -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div class="bg-white rounded-lg shadow-sm p-6">
+                <h2 class="text-lg font-medium text-gray-900 mb-4">Top Countries</h2>
+                <ul id="topCountriesList" class="space-y-2 text-sm text-gray-700">
+                    <!-- Populated via JS -->
+                </ul>
+            </div>
+            <div class="bg-white rounded-lg shadow-sm p-6">
+                <h2 class="text-lg font-medium text-gray-900 mb-4">Top Hazards</h2>
+                <ul id="topHazardsList" class="space-y-2 text-sm text-gray-700">
+                    <!-- Populated via JS -->
+                </ul>
+            </div>
+        </div>
+    </main>
+
+    <script src="dashboard.js"></script>
+</body>
+</html>
