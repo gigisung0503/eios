@@ -31,13 +31,36 @@ class SignalManager {
     }
 
     async init() {
-        this.bindEvents();
+    this.bindEvents();
+    this._ensureRiskAssessmentStyles();
         await this.loadCountries();
         this.applyInitialFilters();
         this.loadSignals();
         this.loadTags();
         this.loadConfig();
         this.checkSchedulerStatus();
+    }
+
+    _ensureRiskAssessmentStyles() {
+        // Inject minimal CSS to animate risk assessment expansion/collapse
+        if (document.getElementById('risk-assessment-styles')) return;
+        const style = document.createElement('style');
+        style.id = 'risk-assessment-styles';
+        style.textContent = `
+        .risk-assessment {
+            max-height: 0px;
+            overflow: hidden;
+            opacity: 0;
+            transition: max-height 240ms ease, opacity 200ms ease;
+        }
+        .risk-assessment.open {
+            max-height: 320px; /* adjust as needed */
+            overflow: auto;
+            opacity: 1;
+        }
+        .risk-assessment .whitespace-pre-line { white-space: pre-wrap; }
+        `;
+        document.head.appendChild(style);
     }
 
     bindEvents() {
@@ -498,15 +521,42 @@ class SignalManager {
                 this.discardSignal(signalId);
             });
         });
+
+        // Click on card to toggle risk assessment (but ignore clicks on controls)
+        container.querySelectorAll('.signal-card').forEach(card => {
+            card.addEventListener('click', (e) => {
+                const tag = e.target.tagName.toLowerCase();
+                // ignore clicks on buttons, links, inputs
+                if (tag === 'button' || tag === 'a' || tag === 'input' || e.target.closest('button') || e.target.closest('a')) {
+                    return;
+                }
+                const riskDiv = card.querySelector('.risk-assessment');
+                if (riskDiv) {
+                    // toggle with animation class
+                    riskDiv.classList.toggle('open');
+                }
+            });
+        });
     }
 
     renderSignalCard(signal) {
         const statusClass = `status-${signal.status.toLowerCase()}`;
         const isSignalText = signal.is_signal === "Yes" ? "True Signal" : "Not a Signal";
         const isSignalColor = signal.is_signal === "Yes" ? "text-green-600" : "text-red-600";
-        const eiosUrl = `https://portal.who.int/eios/#/items/${signal.rss_item_id}/title/full-article`;
-        const justification = signal.justification || "";
-        const safeJustification = justification.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/\n/g, '&#10;');
+        const eiosUrl = `https://portal.who.int/eios/#/items/${signal.id}/title/full-article`;
+    const riskText = signal.risk_signal_assessment || "";
+    // Parsed values from processed signal
+    const countriesVal = signal.extracted_countries || "N/A";
+    const isSignalVal = signal.is_signal || "N/A";
+    const justificationVal = signal.justification || "";
+    const hazardsVal = signal.extracted_hazards || "N/A";
+    // Basic escaping
+    const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const safeRaw = esc(riskText).replace(/\n/g, '<br>');
+    const safeCountries = esc(countriesVal);
+    const safeIsSignal = esc(isSignalVal);
+    const safeJustification = esc(justificationVal).replace(/\n/g, '<br>');
+    const safeHazards = esc(hazardsVal);
         const title = signal.raw_signal ? signal.raw_signal.title : "N/A";
         const summary = signal.raw_signal ? (signal.raw_signal.translated_abstractive_summary || signal.raw_signal.abstractive_summary) : "N/A";
         const country = signal.extracted_countries || "N/A";
@@ -530,12 +580,22 @@ class SignalManager {
                         </a>
                     </div>
                     <div class="flex space-x-2">
-                        <button class="flag-btn bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded-lg text-sm" data-signal-id="${signal.id}">
-                            <i class="fas fa-flag"></i> Flag
+                        <button class="flag-btn ${signal.status === 'flagged' ? 'bg-gray-400 hover:bg-gray-500' : 'bg-yellow-500 hover:bg-yellow-600'} text-white px-3 py-1 rounded-lg text-sm" data-signal-id="${signal.id}">
+                            <i class="fas fa-flag"></i> ${signal.status === 'flagged' ? 'Unflag' : 'Flag'}
                         </button>
-                        <button class="discard-btn bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded-lg text-sm" data-signal-id="${signal.id}">
-                            <i class="fas fa-trash"></i> Discard
+                        <button class="discard-btn ${signal.status === 'discarded' ? 'bg-gray-400 hover:bg-gray-500' : 'bg-red-500 hover:bg-red-600'} text-white px-3 py-1 rounded-lg text-sm" data-signal-id="${signal.id}">
+                            <i class="fas fa-trash"></i> ${signal.status === 'discarded' ? 'Restore' : 'Discard'}
                         </button>
+                    </div>
+                    <!-- Risk assessment panel (collapsed by default) -->
+                    <div class="risk-assessment mt-3 text-sm text-gray-800">
+                        <div class="mb-2"><strong>Countries:</strong> ${safeCountries}</div>
+                        <div class="mb-2"><strong>Is signal:</strong> ${safeIsSignal}</div>
+                        <div class="mb-2"><strong>Justification:</strong> ${safeJustification}</div>
+                        <div class="mb-2"><strong>Hazards:</strong> ${safeHazards}</div>
+                        <hr class="my-2" />
+                        <div class="text-xs text-gray-600"><strong>Raw assessment:</strong></div>
+                        <div class="whitespace-pre-line text-xs text-gray-700">${safeRaw}</div>
                     </div>
                 </div>
             </div>
@@ -556,7 +616,8 @@ class SignalManager {
             const result = await response.json();
             if (result.success) {
                 this.loadSignals(); // Reload to show updated status
-                this.showStatus("Signal flagged successfully", false);
+                const msg = result.message || "Signal flagged"
+                this.showStatus(msg, false);
                 setTimeout(() => this.hideStatus(), 2000);
             } else {
                 this.showStatus(`Error flagging signal: ${result.message}`, false, "error");
@@ -576,7 +637,8 @@ class SignalManager {
             const result = await response.json();
             if (result.success) {
                 this.loadSignals(); // Reload to show updated status
-                this.showStatus("Signal discarded successfully", false);
+                const msg = result.message || "Signal discarded"
+                this.showStatus(msg, false);
                 setTimeout(() => this.hideStatus(), 2000);
             } else {
                 this.showStatus(`Error discarding signal: ${result.message}`, false, "error");
