@@ -1,6 +1,7 @@
 import requests
 import time
 import re
+import json
 import logging
 from typing import List, Dict, Any, Tuple
 from src.models.signal import RawSignal, ProcessedSignal, ProcessedSignalID, db
@@ -430,7 +431,7 @@ class SignalProcessor:
         db.session.commit()
         return raw_signal
 
-    def process_signal(self, raw_signal: RawSignal) -> ProcessedSignal:
+    def process_signal(self, raw_signal: RawSignal, is_pinned: bool = False) -> ProcessedSignal:
         """
         Process a single signal using AI evaluation.
 
@@ -536,6 +537,7 @@ class SignalProcessor:
             coping_score=c_score,
             total_risk_score=total,
             is_signal=is_signal,
+            is_pinned=is_pinned,
             raw_signal_id=raw_signal.id
         )
         
@@ -582,53 +584,15 @@ class SignalProcessor:
                 # Save raw signal
                 raw_signal = self.save_raw_signal(article)
                 
+                # Get pinned status from article
+                is_pinned = article.get('is_pinned', False)
+                
                 # Process signal
-                processed_signal = self.process_signal(raw_signal)
+                processed_signal = self.process_signal(raw_signal, is_pinned)
                 processed_signals.append(processed_signal)
                 processed_count += 1
                 
-                logger.info(f"Processed signal {processed_count}/{batch_size}: {rss_item_id}")
-                
-            except Exception as e:
-                logger.error(f"Error processing signal {rss_item_id}: {e}")
-                continue
-        
-        logger.info(f"Batch processing complete. Processed {len(processed_signals)} signals.")
-        return processed_signals
-        """
-        Process a batch of signals, filtering out already processed ones.
-        
-        Args:
-            articles: List of article dictionaries from EIOS
-            batch_size: Maximum number of signals to process in this batch
-            
-        Returns:
-            List of processed signals
-        """
-        processed_signals = []
-        processed_count = 0
-        
-        for article in articles:
-            if processed_count >= batch_size:
-                break
-                
-            rss_item_id = str(article.get('id', ''))
-            
-            # Skip if already processed
-            if self.is_already_processed(rss_item_id):
-                logger.info(f"Skipping already processed signal: {rss_item_id}")
-                continue
-            
-            try:
-                # Save raw signal
-                raw_signal = self.save_raw_signal(article)
-                
-                # Process signal
-                processed_signal = self.process_signal(raw_signal)
-                processed_signals.append(processed_signal)
-                processed_count += 1
-                
-                logger.info(f"Processed signal {processed_count}/{batch_size}: {rss_item_id}")
+                logger.info(f"Processed signal {processed_count}/{batch_size}: {rss_item_id} (pinned: {is_pinned})")
                 
             except Exception as e:
                 logger.error(f"Error processing signal {rss_item_id}: {e}")

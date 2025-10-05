@@ -76,6 +76,7 @@ class SignalManager {
         // Filter changes
         document.getElementById("statusFilter").addEventListener("change", () => this.resetAndLoadSignals(true));
         document.getElementById("isSignalFilter").addEventListener("change", () => this.resetAndLoadSignals(true));
+        document.getElementById("pinnedFilter").addEventListener("change", () => this.resetAndLoadSignals(true));
         document.getElementById("pageSizeFilter").addEventListener("change", () => this.resetAndLoadSignals());
 
         // Search input with debounce
@@ -108,6 +109,14 @@ class SignalManager {
         document.getElementById("flagSelectedBtn").addEventListener("click", () => this.batchAction("flag"));
         document.getElementById("discardSelectedBtn").addEventListener("click", () => this.batchAction("discard"));
         document.getElementById("discardNonFlaggedBtn").addEventListener("click", () => this.discardNonFlagged());
+        
+        // Selection controls
+        document.getElementById("selectAllBtn").addEventListener("click", () => this.selectAllSignals());
+        document.getElementById("unselectAllBtn").addEventListener("click", () => this.unselectAllSignals());
+        
+        // Export controls
+        document.getElementById("exportSelectedBtn").addEventListener("click", () => this.exportSelected());
+        document.getElementById("exportAllBtn").addEventListener("click", () => this.exportAll());
         
         // Configuration modal
         document.getElementById("closeConfigBtn").addEventListener("click", () => this.closeConfigModal());
@@ -305,6 +314,7 @@ class SignalManager {
     async loadSignals() {
         const statusFilter = document.getElementById("statusFilter").value;
         const isSignalFilter = document.getElementById("isSignalFilter").value;
+        const pinnedFilter = document.getElementById("pinnedFilter").value;
         const search = document.getElementById("searchInput") ? document.getElementById("searchInput").value.trim() : "";
         
         // Get page size from selector
@@ -327,6 +337,10 @@ class SignalManager {
 
             if (search) {
                 params.append("search", search);
+            }
+            
+            if (pinnedFilter && pinnedFilter !== "all") {
+                params.append("pinned_filter", pinnedFilter);
             }
             
             if (selectedCountries.length > 0) {
@@ -575,6 +589,7 @@ class SignalManager {
                         <span class="mr-3"><i class="fas fa-globe"></i> ${country}</span>
                         <span class="mr-3"><i class="fas fa-calendar-alt"></i> ${processDate}</span>
                         <span class="mr-3 ${isSignalColor}"><i class="fas fa-check-circle"></i> ${isSignalText}</span>
+                        ${signal.is_pinned ? '<span class="mr-3 text-orange-600"><i class="fas fa-thumbtack"></i> Pinned</span>' : '<span class="mr-3 text-gray-400"><i class="fas fa-thumbtack"></i> Unpinned</span>'}
                         <a href="${eiosUrl}" target="_blank" class="text-blue-500 hover:text-blue-700 flex items-center">
                             <i class="fas fa-external-link-alt mr-1"></i> EIOS Link
                         </a>
@@ -606,6 +621,7 @@ class SignalManager {
         const hasSelection = this.selectedSignals.size > 0;
         document.getElementById("flagSelectedBtn").disabled = !hasSelection;
         document.getElementById("discardSelectedBtn").disabled = !hasSelection;
+        document.getElementById("exportSelectedBtn").disabled = !hasSelection;
     }
 
     async flagSignal(signalId) {
@@ -974,6 +990,156 @@ class SignalManager {
             }
         } catch (error) {
             console.error("Error loading configuration:", error);
+        }
+    }
+
+    selectAllSignals() {
+        // Select all signals on current page
+        this.signals.forEach(signal => {
+            this.selectedSignals.add(signal.id);
+        });
+        
+        // Update checkboxes
+        document.querySelectorAll(".signal-checkbox").forEach(checkbox => {
+            checkbox.checked = true;
+        });
+        
+        this.updateBatchButtons();
+    }
+
+    unselectAllSignals() {
+        // Clear all selections
+        this.selectedSignals.clear();
+        
+        // Update checkboxes
+        document.querySelectorAll(".signal-checkbox").forEach(checkbox => {
+            checkbox.checked = false;
+        });
+        
+        this.updateBatchButtons();
+    }
+
+    getCurrentFilters() {
+        // Get current filter state for export
+        const statusFilter = document.getElementById("statusFilter").value;
+        const isSignalFilter = document.getElementById("isSignalFilter").value;
+        const pinnedFilter = document.getElementById("pinnedFilter").value;
+        const search = document.getElementById("searchInput") ? document.getElementById("searchInput").value.trim() : "";
+        
+        // Get country filter from checkboxes
+        const countryFilter = document.getElementById("countryFilter");
+        const selectedCountries = Array.from(countryFilter.querySelectorAll('input[type="checkbox"]:checked')).map(checkbox => checkbox.value);
+        
+        // Get date filters
+        const startDate = document.getElementById("startDate").value;
+        const endDate = document.getElementById("endDate").value;
+        
+        return {
+            status: statusFilter,
+            pinned_filter: pinnedFilter,
+            signals_only: isSignalFilter === "Yes",
+            search: search || undefined,
+            countries: selectedCountries.length > 0 ? selectedCountries.join(",") : undefined,
+            start_date: startDate || undefined,
+            end_date: endDate || undefined
+        };
+    }
+
+    async exportSelected() {
+        if (this.selectedSignals.size === 0) {
+            this.showStatus("No signals selected for export", false, "error");
+            setTimeout(() => this.hideStatus(), 3000);
+            return;
+        }
+
+        try {
+            this.showStatus("Exporting selected signals...", true);
+            
+            const response = await fetch("/api/signals/export-csv", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    signal_ids: Array.from(this.selectedSignals),
+                    filters: this.getCurrentFilters()
+                })
+            });
+
+            if (response.ok) {
+                // Get filename from response headers
+                const contentDisposition = response.headers.get('Content-Disposition');
+                const filename = contentDisposition 
+                    ? contentDisposition.split('filename=')[1].replace(/"/g, '')
+                    : 'eios_signals_export.csv';
+                
+                // Create download
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+                
+                this.showStatus(`Exported ${this.selectedSignals.size} signals successfully`, false);
+                setTimeout(() => this.hideStatus(), 3000);
+            } else {
+                const result = await response.json();
+                this.showStatus(`Export failed: ${result.message}`, false, "error");
+                setTimeout(() => this.hideStatus(), 5000);
+            }
+        } catch (error) {
+            this.showStatus(`Export failed: ${error.message}`, false, "error");
+            setTimeout(() => this.hideStatus(), 5000);
+        }
+    }
+
+    async exportAll() {
+        try {
+            this.showStatus("Exporting all signals with current filters...", true);
+            
+            const response = await fetch("/api/signals/export-csv", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    signal_ids: "all",
+                    filters: this.getCurrentFilters()
+                })
+            });
+
+            if (response.ok) {
+                // Get filename from response headers
+                const contentDisposition = response.headers.get('Content-Disposition');
+                const filename = contentDisposition 
+                    ? contentDisposition.split('filename=')[1].replace(/"/g, '')
+                    : 'eios_signals_export.csv';
+                
+                // Create download
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+                
+                this.showStatus("All signals exported successfully", false);
+                setTimeout(() => this.hideStatus(), 3000);
+            } else {
+                const result = await response.json();
+                this.showStatus(`Export failed: ${result.message}`, false, "error");
+                setTimeout(() => this.hideStatus(), 5000);
+            }
+        } catch (error) {
+            this.showStatus(`Export failed: ${error.message}`, false, "error");
+            setTimeout(() => this.hideStatus(), 5000);
         }
     }
 }

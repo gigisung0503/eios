@@ -40,6 +40,7 @@ class ProcessedSignal(db.Model):
     total_risk_score = db.Column(db.Integer)
     is_signal = db.Column(db.String(10))  # 'Yes' or 'No'
     status = db.Column(db.String(20), default='new')  # 'new', 'flagged', 'discarded'
+    is_pinned = db.Column(db.Boolean, default=False)  # Whether article was pinned in EIOS
     processed_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     # Relationship to raw signal
@@ -71,6 +72,7 @@ class ProcessedSignal(db.Model):
             'total_risk_score': self.total_risk_score,
             'is_signal': self.is_signal,
             'status': self.status,
+            'is_pinned': self.is_pinned,
             'processed_at': self.processed_at.isoformat() if self.processed_at else None,
             'raw_signal': self.raw_signal.to_dict() if self.raw_signal else None
         }

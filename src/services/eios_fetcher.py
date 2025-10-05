@@ -104,6 +104,34 @@ class EIOSFetcher:
         pinned = res.json().get("result", [])
         return {article["id"] for article in pinned if "id" in article}
 
+    def get_all_articles_with_pinned_status(self, board_ids: List[int]) -> List[Dict[str, Any]]:
+        """
+        Get all articles from boards with their pinned status.
+        
+        Args:
+            board_ids: List of board IDs to fetch articles from
+            
+        Returns:
+            List of articles with 'is_pinned' field added
+        """
+        pinned_ids = self.get_pinned_article_ids(board_ids)
+        logger.info("Pinned articles found: %d", len(pinned_ids))
+        
+        all_articles = []
+        for board_id in board_ids:
+            board_articles = self.get_all_articles(board_id)
+            for article in board_articles:
+                article['is_pinned'] = article.get("id") in pinned_ids
+                all_articles.append(article)
+        
+        total_articles = len(all_articles)
+        pinned_count = sum(1 for article in all_articles if article['is_pinned'])
+        unpinned_count = total_articles - pinned_count
+        
+        logger.info("Total articles found: %d (pinned: %d, unpinned: %d)", 
+                   total_articles, pinned_count, unpinned_count)
+        return all_articles
+
     def get_unpinned_articles_from_boards(self, board_ids: List[int]) -> List[Dict[str, Any]]:
         pinned_ids = self.get_pinned_article_ids(board_ids)
         logger.info("Pinned articles found: %d", len(pinned_ids))
@@ -124,10 +152,10 @@ class EIOSFetcher:
             tags: List of tags to search for
             
         Returns:
-            List of unpinned articles/signals
+            List of all articles/signals (both pinned and unpinned) with pinned status
         """
         try:
-            all_unpinned_articles = []
+            all_articles = []
 
             for tag in tags:
                 logger.info("Processing tag: %s", tag)
@@ -136,11 +164,11 @@ class EIOSFetcher:
                 if not board_ids:
                     continue
 
-                articles = self.get_unpinned_articles_from_boards(board_ids)
-                all_unpinned_articles.extend(articles)
+                articles = self.get_all_articles_with_pinned_status(board_ids)
+                all_articles.extend(articles)
 
-            logger.info("Total signals fetched: %d", len(all_unpinned_articles))
-            return all_unpinned_articles
+            logger.info("Total signals fetched: %d", len(all_articles))
+            return all_articles
 
         except requests.RequestException as e:
             logger.error("EIOS request failed: %s", e)

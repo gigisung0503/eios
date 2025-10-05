@@ -46,6 +46,21 @@
             margin-bottom: 1rem;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
         }
+        .button-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            align-items: center;
+        }
+        @media (max-width: 640px) {
+            .button-group {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .button-group > div {
+                width: 100%;
+            }
+        }
     </style>
 </head>
 <body class="bg-gray-50 min-h-screen">
@@ -112,22 +127,56 @@
                             <option value="No">Not Signals</option>
                         </select>
 
+                        <!-- Filter to select pinned/unpinned signals -->
+                        <select id="pinnedFilter" class="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                            <option value="all">All Articles</option>
+                            <option value="pinned">Pinned</option>
+                            <option value="unpinned">Unpinned</option>
+                        </select>
+
                         <!-- Search box -->
                         <input type="text" id="searchInput" placeholder="Search..." class="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full sm:w-auto"/>
                     </div>
-                    <div class="flex space-x-2">
-                        <button id="flagSelectedBtn" class="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled>
-                            <i class="fas fa-flag"></i>
-                            <span>Flag Selected</span>
-                        </button>
-                        <button id="discardSelectedBtn" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled>
-                            <i class="fas fa-trash"></i>
-                            <span>Discard Selected</span>
-                        </button>
-                        <button id="discardNonFlaggedBtn" class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors">
-                            <i class="fas fa-broom"></i>
-                            <span>Discard Non-Flagged</span>
-                        </button>
+                    <div class="button-group">
+                        <!-- Selection Controls -->
+                        <div class="flex space-x-2">
+                            <button id="selectAllBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg flex items-center space-x-2 transition-colors text-sm">
+                                <i class="fas fa-check-square"></i>
+                                <span>Select All</span>
+                            </button>
+                            <button id="unselectAllBtn" class="bg-gray-600 hover:bg-gray-700 text-white px-3 py-2 rounded-lg flex items-center space-x-2 transition-colors text-sm">
+                                <i class="fas fa-square"></i>
+                                <span>Unselect All</span>
+                            </button>
+                        </div>
+                        
+                        <!-- Action Buttons -->
+                        <div class="flex space-x-2">
+                            <button id="flagSelectedBtn" class="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                                <i class="fas fa-flag"></i>
+                                <span>Flag Selected</span>
+                            </button>
+                            <button id="discardSelectedBtn" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                                <i class="fas fa-trash"></i>
+                                <span>Discard Selected</span>
+                            </button>
+                            <button id="exportSelectedBtn" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                                <i class="fas fa-download"></i>
+                                <span>Export Selected</span>
+                            </button>
+                        </div>
+                        
+                        <!-- Other Actions -->
+                        <div class="flex space-x-2">
+                            <button id="discardNonFlaggedBtn" class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors">
+                                <i class="fas fa-broom"></i>
+                                <span>Discard Non-Flagged</span>
+                            </button>
+                            <button id="exportAllBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors">
+                                <i class="fas fa-file-csv"></i>
+                                <span>Export All</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
                 

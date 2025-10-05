@@ -1,8 +1,12 @@
-from flask import Blueprint, request, jsonify
-from src.models.signal import db, RawSignal, ProcessedSignal, UserConfig
+from flask import Blueprint, request, jsonify, Response
+from src.models.signal import db, RawSignal, ProcessedSignal, ProcessedSignalID, UserConfig
 from src.services.eios_fetcher import EIOSFetcher
 from src.services.signal_processor import SignalProcessor
+from sqlalchemy import or_
 import logging
+import csv
+import io
+from datetime import datetime
 
 logger = logging.getLogger("signals_routes")
 
@@ -65,6 +69,7 @@ def get_processed_signals():
     Query parameters:
         status: one of 'all', 'new', 'flagged', 'discarded' (default 'all')
         signals_only: boolean flag to include only true signals (is_signal == 'Yes')
+        pinned_filter: one of 'all', 'pinned', 'unpinned' (default 'all')
         search: optional free text to search across raw and processed signal fields
         page: page number for pagination (default 1)
         page_size: number of records per page (default 20)
@@ -76,6 +81,7 @@ def get_processed_signals():
         # Get query parameters
         status_filter = request.args.get('status', 'all')  # 'all', 'new', 'flagged', 'discarded'
         signals_only = request.args.get('signals_only', 'false').lower() == 'true'
+        pinned_filter = request.args.get('pinned_filter', 'all')  # 'all', 'pinned', 'unpinned'
         search_term = request.args.get('search', None)
         
         # Pagination parameters
@@ -98,9 +104,14 @@ def get_processed_signals():
         if status_filter != 'all':
             query = query.filter(ProcessedSignal.status == status_filter)
 
+        # Filter by pinned status if not 'all'
+        if pinned_filter == 'pinned':
+            query = query.filter(ProcessedSignal.is_pinned == True)
+        elif pinned_filter == 'unpinned':
+            query = query.filter(ProcessedSignal.is_pinned == False)
+
         # Filter by countries if provided
         if countries_filter:
-            from sqlalchemy import or_
             countries_list = [c.strip() for c in countries_filter.split(',') if c.strip()]
             if countries_list:
                 country_conditions = []
@@ -131,7 +142,6 @@ def get_processed_signals():
         # Apply search across multiple fields if a search term is provided. Join with RawSignal to
         # search titles and summaries. Using ilike for case-insensitive partial matching.
         if search_term:
-            from sqlalchemy import or_
             # Escape percent signs in search term if present
             escaped = search_term.replace('%', '\\%').replace('_', '\\_')
             pattern = f"%{escaped}%"
@@ -532,11 +542,17 @@ def get_signal_stats():
         # Counts by status
         counts = {'new': 0, 'flagged': 0, 'discarded': 0}
         is_signal_counts = {'Yes': 0, 'No': 0}
+        pinned_counts = {'pinned': 0, 'unpinned': 0}
         country_counter = Counter()
         hazard_counter = Counter()
         for s in signals:
             counts[s.status] = counts.get(s.status, 0) + 1
             is_signal_counts[s.is_signal] = is_signal_counts.get(s.is_signal, 0) + 1
+            # Count pinned status
+            if s.is_pinned:
+                pinned_counts['pinned'] += 1
+            else:
+                pinned_counts['unpinned'] += 1
             # Count countries
             if s.extracted_countries:
                 for c in [c.strip() for c in s.extracted_countries.split(';') if c.strip()]:
@@ -564,6 +580,7 @@ def get_signal_stats():
             'success': True,
             'counts': counts,
             'is_signal_counts': is_signal_counts,
+            'pinned_counts': pinned_counts,
             'top_countries': top_countries,
             'top_hazards': top_hazards
         })
@@ -609,7 +626,6 @@ def get_countries():
                 pass
 
         if search_term:
-            from sqlalchemy import or_
             escaped = search_term.replace('%', '\\%').replace('_', '\\_')
             pattern = f"%{escaped}%"
             query = query.join(RawSignal, ProcessedSignal.raw_signal).filter(
@@ -770,5 +786,170 @@ def preview_cleanup():
         return jsonify({
             'success': False,
             'message': f'Error previewing cleanup: {str(e)}'
+        }), 500
+
+
+@signals_bp.route('/signals/export-csv', methods=['POST'])
+def export_signals_csv():
+    """
+    Export selected signals to CSV format.
+    
+    Request body should contain:
+    {
+        "signal_ids": [1, 2, 3, ...] or "all" for all signals with current filters
+        "filters": {
+            "status": "all|new|flagged|discarded",
+            "pinned_filter": "all|pinned|unpinned", 
+            "signals_only": true|false,
+            "search": "search term",
+            "countries": "country1,country2",
+            "start_date": "YYYY-MM-DD",
+            "end_date": "YYYY-MM-DD"
+        }
+    }
+    """
+    try:
+        data = request.get_json()
+        signal_ids = data.get('signal_ids', [])
+        filters = data.get('filters', {})
+        
+        # Build query based on filters or specific IDs
+        if signal_ids == "all":
+            # Apply filters to get all matching signals
+            query = ProcessedSignal.query
+            
+            status_filter = filters.get('status', 'all')
+            pinned_filter = filters.get('pinned_filter', 'all')
+            signals_only = filters.get('signals_only', False)
+            search_term = filters.get('search')
+            countries_filter = filters.get('countries')
+            start_date = filters.get('start_date')
+            end_date = filters.get('end_date')
+            
+            # Apply filters (same logic as get_processed_signals)
+            if signals_only:
+                query = query.filter(ProcessedSignal.is_signal == 'Yes')
+            
+            if status_filter != 'all':
+                query = query.filter(ProcessedSignal.status == status_filter)
+            
+            if pinned_filter == 'pinned':
+                query = query.filter(ProcessedSignal.is_pinned == True)
+            elif pinned_filter == 'unpinned':
+                query = query.filter(ProcessedSignal.is_pinned == False)
+            
+            if countries_filter:
+                countries_list = [c.strip() for c in countries_filter.split(',') if c.strip()]
+                if countries_list:
+                    country_conditions = []
+                    for country in countries_list:
+                        country_conditions.append(ProcessedSignal.extracted_countries.ilike(f'%{country}%'))
+                    query = query.filter(or_(*country_conditions))
+            
+            if start_date:
+                try:
+                    start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+                    query = query.filter(ProcessedSignal.processed_at >= start_dt)
+                except ValueError:
+                    pass
+            
+            if end_date:
+                try:
+                    end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+                    from datetime import timedelta
+                    end_dt = end_dt + timedelta(days=1)
+                    query = query.filter(ProcessedSignal.processed_at < end_dt)
+                except ValueError:
+                    pass
+            
+            if search_term:
+                escaped = search_term.replace('%', '\\%').replace('_', '\\_')
+                pattern = f"%{escaped}%"
+                query = query.join(RawSignal, ProcessedSignal.raw_signal).filter(
+                    or_(
+                        RawSignal.original_title.ilike(pattern),
+                        RawSignal.title.ilike(pattern),
+                        RawSignal.translated_description.ilike(pattern),
+                        RawSignal.translated_abstractive_summary.ilike(pattern),
+                        RawSignal.abstractive_summary.ilike(pattern),
+                        ProcessedSignal.extracted_countries.ilike(pattern),
+                        ProcessedSignal.extracted_hazards.ilike(pattern)
+                    )
+                )
+            
+            signals = query.order_by(ProcessedSignal.processed_at.desc()).all()
+        else:
+            # Get specific signals by IDs
+            signals = ProcessedSignal.query.filter(ProcessedSignal.id.in_(signal_ids)).all()
+        
+        if not signals:
+            return jsonify({
+                'success': False,
+                'message': 'No signals found for export'
+            }), 400
+        
+        # Create CSV content
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        # CSV Headers
+        headers = [
+            'ID', 'RSS Item ID', 'Title', 'Original Title', 'Translated Description',
+            'Translated Summary', 'Summary', 'Countries', 'Is Signal', 'Justification',
+            'Hazards', 'Vulnerability Score', 'Coping Score', 'Total Risk Score',
+            'Status', 'Is Pinned', 'Processed Date', 'Created Date', 'EIOS URL'
+        ]
+        writer.writerow(headers)
+        
+        # Write data rows
+        for signal in signals:
+            raw_signal = signal.raw_signal
+            eios_url = f"https://portal.who.int/eios/#/items/{signal.rss_item_id}/title/full-article"
+            
+            row = [
+                signal.id,
+                signal.rss_item_id,
+                raw_signal.title if raw_signal else '',
+                raw_signal.original_title if raw_signal else '',
+                raw_signal.translated_description if raw_signal else '',
+                raw_signal.translated_abstractive_summary if raw_signal else '',
+                raw_signal.abstractive_summary if raw_signal else '',
+                signal.extracted_countries or '',
+                signal.is_signal or '',
+                signal.get_justification(),
+                signal.extracted_hazards or '',
+                signal.vulnerability_score or '',
+                signal.coping_score or '',
+                signal.total_risk_score or '',
+                signal.status,
+                'Yes' if signal.is_pinned else 'No',
+                signal.processed_at.strftime('%Y-%m-%d %H:%M:%S') if signal.processed_at else '',
+                raw_signal.created_at.strftime('%Y-%m-%d %H:%M:%S') if raw_signal and raw_signal.created_at else '',
+                eios_url
+            ]
+            writer.writerow(row)
+        
+        # Prepare response
+        csv_content = output.getvalue()
+        output.close()
+        
+        # Generate filename with timestamp
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"eios_signals_{timestamp}.csv"
+        
+        return Response(
+            csv_content,
+            mimetype='text/csv',
+            headers={
+                'Content-Disposition': f'attachment; filename={filename}',
+                'Content-Type': 'text/csv; charset=utf-8'
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Error exporting signals to CSV: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'Error exporting signals: {str(e)}'
         }), 500
 
