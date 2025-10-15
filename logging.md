@@ -1,11 +1,174 @@
 # EIOS Application Development Log
 
 ## Overview
-This document tracks all enhancements and modifications made to the EIOS Signal Management Application, including pinned articles support and CSV export functionality.
+This document tracks all enhancements and modifications made to the EIOS Signal Management Application, including pinned articles support, CSV export functionality, and EIOS v2 API migration.
 
-> **Last Updated**: October 5, 2025  
-> **Version**: 2.0 - Enhanced with Pinned Articles Support and CSV Export  
+> **Last Updated**: October 15, 2025  
+> **Version**: 2.1 - Migrated to EIOS v2 API  
 > **Status**: Development Complete, Ready for Testing
+
+---
+
+## Enhancement 3: EIOS v2 API Migration (October 15, 2025)
+
+### Summary
+Migrated from EIOS v1 API to EIOS v2 API with new authentication flow, endpoints, and data structures. This update modernizes the application to use the latest EIOS API standards.
+
+### API Changes
+
+#### Old EIOS v1 API Endpoints
+- `https://portal.who.int/eios/API/News/Service/GetBoards`
+- `https://portal.who.int/eios/API/News/Service/GetBoardArticles`
+- `https://portal.who.int/eios/API/News/Service/GetPinnedArticles`
+
+#### New EIOS v2 API Endpoints
+- **Base URL (Production)**: `https://eios.who.int/portal/api/api/v1.0`
+- **Base URL (Sandbox)**: `https://eios.who.int/portal-sandbox/api/api/v1.0`
+- **Terms of Use**: `PUT /UserProfiles/me`
+- **Boards by Tags**: `GET /Boards/by-tags`
+- **Pinned Articles**: `GET /Items/pinned-to-boards`
+- **Board Articles**: `GET /Items/matching-board/{boardId}` (fetches all articles matching board filter)
+
+### Backend Changes
+
+#### EIOS Fetcher (`src/services/eios_fetcher.py`)
+**Complete rewrite to support EIOS v2:**
+
+**New Methods:**
+- `accept_terms()` - Accept EIOS Terms of Use (required for v2 API)
+- `utc_now()` - Get current UTC datetime with timezone awareness
+- `to_iso_z()` - Convert datetime to ISO 8601 format with Z suffix
+- `get_pinned_articles()` - Fetch pinned articles using v2 endpoint
+- `get_board_articles()` - **NEW** Fetch all articles matching board filter (pinned + unpinned)
+- `_transform_article_v2_to_v1()` - Transform v2 article format to v1 format for compatibility
+
+**Modified Methods:**
+- `get_access_token()` - Enhanced error handling for token acquisition
+- `normalize_datetime()` - Improved datetime parsing with timezone handling
+- `get_boards()` - Updated to use `/Boards/by-tags` endpoint with pagination
+- `get_all_articles_with_pinned_status()` - **UPDATED** Now fetches from both endpoints:
+  1. Gets pinned articles from `/Items/pinned-to-boards`
+  2. Gets all board articles from `/Items/matching-board/{boardId}` for each board
+  3. Merges results, deduplicates, and correctly marks pinned status
+- `fetch_signals()` - Updated to work with v2 API flow
+
+**Deprecated Methods (maintained for compatibility):**
+- `get_all_articles()` - Not used in v2 API
+- `get_pinned_article_ids()` - Replaced by integrated pinned status in v2
+- `get_unpinned_articles_from_boards()` - V2 API uses board articles endpoint instead
+
+**New Configuration:**
+- `BASE_URL` - Centralized API base URL (supports both production and sandbox via env var)
+- `PAGE_SIZE_BOARDS = 100` - Board pagination size
+- `PAGE_SIZE_ARTICLES = 300` - Article pagination size
+- `MAX_ARTICLES = 5000` - Safety cap for article fetching
+- `FETCH_DURATION_HOURS = 5` - Default time window (increased from 1 hour)
+
+### Key Differences: V1 vs V2
+
+#### Authentication
+- **V1**: Simple OAuth2 token
+- **V2**: OAuth2 token + Terms of Use acceptance required
+
+#### Data Retrieval
+- **V1**: Separate calls for all articles and pinned status
+- **V2**: Dual endpoint strategy:
+  - `/Items/pinned-to-boards` for pinned articles with timestamps
+  - `/Items/matching-board/{boardId}` for all board articles
+  - Application merges and deduplicates results with correct pinned status
+
+#### Time Handling
+- **V1**: Used Elasticsearch date math (`now-2h/h`)
+- **V2**: Uses ISO 8601 format with Z suffix (`2025-10-15T10:30:00Z`)
+
+#### Article Focus
+- **V1**: Could fetch all articles (pinned and unpinned)
+- **V2**: Primarily provides pinned articles within time window
+
+### Data Format Changes
+
+#### V2 Article Structure
+```python
+{
+    "id": "article_id",
+    "title": "...",
+    "originalTitle": "...",
+    "translatedDescription": "...",
+    "description": "...",
+    "abstractiveSummary": "...",
+    "link": "...",
+    "languageIso": "en",
+    "pubDate": "2025-10-15T10:30:00Z",
+    "processedOnDate": "2025-10-15T10:35:00Z",
+    "source": {
+        "id": 123,
+        "name": "Source Name",
+        "url": "https://...",
+        "country": {
+            "label": "Country Name"
+        }
+    },
+    "userActions": {
+        "pinned": {
+            "toBoards": [
+                {
+                    "boardId": 456,
+                    "boardName": "Board Name",
+                    "pinnedOnDate": "2025-10-15T10:32:00Z"
+                }
+            ]
+        }
+    }
+}
+```
+
+### Compatibility Layer
+
+The application maintains backward compatibility by:
+1. **Transform Function**: Converts v2 article format to v1 format expected by signal processor
+2. **Pinned Status**: All articles from v2 API are marked as `is_pinned = True`
+3. **Legacy Methods**: Deprecated methods return empty data rather than errors
+4. **Field Mapping**: Maps v2 field names to v1 field names automatically
+
+### Impact on Application Features
+
+#### ✅ Fully Compatible
+- Signal fetching and processing
+- AI evaluation and classification
+- Country and hazard extraction
+- CSV export functionality
+- User flagging and status management
+- Filtering and search
+
+#### ⚠️ Behavior Changes
+- **Pinned Filter**: All fetched articles will show as "pinned" since v2 API focuses on pinned articles
+- **Time Window**: Default increased to 5 hours (was 1 hour)
+- **Unpinned Articles**: No longer available through v2 API
+
+#### 💡 Recommendations
+1. Use "All Articles" filter instead of "Pinned/Unpinned" filter
+2. Adjust `FETCH_DURATION_HOURS` environment variable as needed
+3. Consider the time window when expecting new articles
+
+### Configuration Updates
+
+#### Environment Variables
+No changes to required environment variables:
+- `WHO_TENANT_ID` - Azure AD tenant ID
+- `EIOS_CLIENT_ID_SCOPE` - EIOS API scope
+- `CONSUMER_CLIENT_ID` - Client application ID
+- `CONSUMER_SECRET` - Client application secret
+- `FETCH_DURATION_HOURS` - Time window for fetching (default: 5)
+
+### Testing Checklist
+- [ ] Verify authentication works with v2 API
+- [ ] Confirm Terms of Use acceptance
+- [ ] Test board retrieval by tags
+- [ ] Test pinned article fetching
+- [ ] Verify article transformation
+- [ ] Confirm signal processing works
+- [ ] Test CSV export with v2 data
+- [ ] Validate all filters function correctly
 
 ---
 
