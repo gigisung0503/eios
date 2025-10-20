@@ -218,6 +218,39 @@
                         </select>
                     </div>
                 </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mt-4">
+                    <div>
+                        <label for="includeCountriesInput" class="block text-sm font-medium text-gray-700 mb-1">Include Countries</label>
+                        <input type="text" id="includeCountriesInput" class="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full" placeholder="Egypt, Saudi Arabia">
+                        <p class="text-xs text-gray-500 mt-1">Show signals that contain any of these countries.</p>
+                    </div>
+                    <div>
+                        <label for="excludeCountriesInput" class="block text-sm font-medium text-gray-700 mb-1">Exclude Countries</label>
+                        <input type="text" id="excludeCountriesInput" class="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full" placeholder="France, Spain">
+                        <p class="text-xs text-gray-500 mt-1">Hide signals that mention any excluded countries.</p>
+                    </div>
+                    <div>
+                        <label for="harmonizeCountriesInput" class="block text-sm font-medium text-gray-700 mb-1">Harmonize Countries</label>
+                        <input type="text" id="harmonizeCountriesInput" class="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full" placeholder="U.S.A., United States">
+                        <p class="text-xs text-gray-500 mt-1">Match normalized country names (ignores punctuation and case).</p>
+                    </div>
+                    <div>
+                        <label for="includeHazardsInput" class="block text-sm font-medium text-gray-700 mb-1">Include Hazards</label>
+                        <input type="text" id="includeHazardsInput" class="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full" placeholder="Outbreak, Vaccine">
+                        <p class="text-xs text-gray-500 mt-1">Show signals that contain any of these hazards.</p>
+                    </div>
+                    <div>
+                        <label for="excludeHazardsInput" class="block text-sm font-medium text-gray-700 mb-1">Exclude Hazards</label>
+                        <input type="text" id="excludeHazardsInput" class="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full" placeholder="Rumor">
+                        <p class="text-xs text-gray-500 mt-1">Hide signals that reference excluded hazards.</p>
+                    </div>
+                    <div>
+                        <label for="harmonizeHazardsInput" class="block text-sm font-medium text-gray-700 mb-1">Harmonize Hazards</label>
+                        <input type="text" id="harmonizeHazardsInput" class="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full" placeholder="COVID-19, Covid19">
+                        <p class="text-xs text-gray-500 mt-1">Normalize hazard names when matching results.</p>
+                    </div>
+                </div>
             </div>
         </div>
 

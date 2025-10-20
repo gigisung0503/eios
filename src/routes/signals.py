@@ -2,15 +2,66 @@ from flask import Blueprint, request, jsonify, Response
 from src.models.signal import db, RawSignal, ProcessedSignal, ProcessedSignalID, UserConfig
 from src.services.eios_fetcher import EIOSFetcher
 from src.services.signal_processor import SignalProcessor
-from sqlalchemy import or_
+from sqlalchemy import or_, not_, func
 import logging
 import csv
 import io
 from datetime import datetime
+import re
 
 logger = logging.getLogger("signals_routes")
 
 signals_bp = Blueprint('signals', __name__)
+
+
+def _parse_filter_values(raw_value):
+    """Split a comma-separated string into a list of trimmed values."""
+    if not raw_value:
+        return []
+    if isinstance(raw_value, list):
+        values = raw_value
+    else:
+        values = str(raw_value).split(',')
+    return [value.strip() for value in values if value and value.strip()]
+
+
+def _sanitize_for_harmonized(value):
+    """Return a lower-cased string without punctuation for harmonized matching."""
+    if not value:
+        return ""
+    return re.sub(r'[^a-z0-9]+', '', value.lower())
+
+
+def _harmonized_column(column):
+    """Produce a SQL expression that removes common separators and lowers case."""
+    cleaned = func.lower(func.coalesce(column, ''))
+    for token in [' ', '-', '_', '.', ',', ';', '/', '\\', '(', ')', '[', ']', '\'', '"']:
+        cleaned = func.replace(cleaned, token, '')
+    return cleaned
+
+
+def _apply_text_filters(query, column, *, include=None, exclude=None, harmonized=None):
+    """Apply include/exclude/harmonized filters to a SQLAlchemy query column."""
+    include = include or []
+    exclude = exclude or []
+    harmonized = harmonized or []
+    safe_column = func.coalesce(column, '')
+
+    if include:
+        include_conditions = [safe_column.ilike(f'%{value}%') for value in include]
+        query = query.filter(or_(*include_conditions))
+
+    for value in exclude:
+        query = query.filter(not_(safe_column.ilike(f'%{value}%')))
+
+    if harmonized:
+        harmonized_column = _harmonized_column(column)
+        for value in harmonized:
+            sanitized = _sanitize_for_harmonized(value)
+            if sanitized:
+                query = query.filter(harmonized_column.like(f'%{sanitized}%'))
+
+    return query
 
 @signals_bp.route('/signals/fetch', methods=['POST'])
 def fetch_signals():
@@ -92,6 +143,12 @@ def get_processed_signals():
         countries_filter = request.args.get('countries', None)
         start_date = request.args.get('start_date', None)
         end_date = request.args.get('end_date', None)
+        include_countries = _parse_filter_values(request.args.get('include_countries'))
+        exclude_countries = _parse_filter_values(request.args.get('exclude_countries'))
+        harmonize_countries = _parse_filter_values(request.args.get('harmonize_countries'))
+        include_hazards = _parse_filter_values(request.args.get('include_hazards'))
+        exclude_hazards = _parse_filter_values(request.args.get('exclude_hazards'))
+        harmonize_hazards = _parse_filter_values(request.args.get('harmonize_hazards'))
 
         # Build query
         query = ProcessedSignal.query
@@ -118,6 +175,22 @@ def get_processed_signals():
                 for country in countries_list:
                     country_conditions.append(ProcessedSignal.extracted_countries.ilike(f'%{country}%'))
                 query = query.filter(or_(*country_conditions))
+
+        query = _apply_text_filters(
+            query,
+            ProcessedSignal.extracted_countries,
+            include=include_countries,
+            exclude=exclude_countries,
+            harmonized=harmonize_countries,
+        )
+
+        query = _apply_text_filters(
+            query,
+            ProcessedSignal.extracted_hazards,
+            include=include_hazards,
+            exclude=exclude_hazards,
+            harmonized=harmonize_hazards,
+        )
 
         # Filter by date range if provided
         if start_date:
@@ -600,6 +673,12 @@ def get_countries():
         start_date = request.args.get('start_date', None)
         end_date = request.args.get('end_date', None)
         is_signal = request.args.get('is_signal', 'all')
+        include_countries = _parse_filter_values(request.args.get('include_countries'))
+        exclude_countries = _parse_filter_values(request.args.get('exclude_countries'))
+        harmonize_countries = _parse_filter_values(request.args.get('harmonize_countries'))
+        include_hazards = _parse_filter_values(request.args.get('include_hazards'))
+        exclude_hazards = _parse_filter_values(request.args.get('exclude_hazards'))
+        harmonize_hazards = _parse_filter_values(request.args.get('harmonize_hazards'))
 
         query = ProcessedSignal.query
 
@@ -640,6 +719,22 @@ def get_countries():
                     ProcessedSignal.risk_signal_assessment.ilike(pattern)
                 )
             )
+
+        query = _apply_text_filters(
+            query,
+            ProcessedSignal.extracted_countries,
+            include=include_countries,
+            exclude=exclude_countries,
+            harmonized=harmonize_countries,
+        )
+
+        query = _apply_text_filters(
+            query,
+            ProcessedSignal.extracted_hazards,
+            include=include_hazards,
+            exclude=exclude_hazards,
+            harmonized=harmonize_hazards,
+        )
 
         signals = query.filter(ProcessedSignal.extracted_countries.isnot(None)).all()
 
