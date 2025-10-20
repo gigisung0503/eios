@@ -13,6 +13,12 @@ class SignalManager {
         this.initialStartDate = params.get('start_date') || '';
         this.initialEndDate = params.get('end_date') || '';
         this.initialIsSignal = params.get('is_signal') || 'all';
+        this.initialIncludeCountries = params.get('include_countries') || '';
+        this.initialExcludeCountries = params.get('exclude_countries') || '';
+        this.initialHarmonizeCountries = params.get('harmonize_countries') || '';
+        this.initialIncludeHazards = params.get('include_hazards') || '';
+        this.initialExcludeHazards = params.get('exclude_hazards') || '';
+        this.initialHarmonizeHazards = params.get('harmonize_hazards') || '';
 
         if (!this.initialStartDate || !this.initialEndDate) {
             const end = new Date();
@@ -89,6 +95,14 @@ class SignalManager {
             });
         }
 
+        // Advanced text filters
+        this.setupFilterInput('includeCountriesInput', true);
+        this.setupFilterInput('excludeCountriesInput', true);
+        this.setupFilterInput('harmonizeCountriesInput', true);
+        this.setupFilterInput('includeHazardsInput');
+        this.setupFilterInput('excludeHazardsInput');
+        this.setupFilterInput('harmonizeHazardsInput');
+
         // Country filter events
         document.getElementById("countryFilter").addEventListener("change", () => this.resetAndLoadSignals());
         document.getElementById("selectAllCountries").addEventListener("click", () => this.selectAllCountries());
@@ -141,6 +155,18 @@ class SignalManager {
         });
     }
 
+    setupFilterInput(elementId, refreshCountries = false) {
+        const element = document.getElementById(elementId);
+        if (!element) return;
+        let timeoutId;
+        const trigger = () => {
+            clearTimeout(timeoutId);
+            timeoutId = setTimeout(() => this.resetAndLoadSignals(refreshCountries), 400);
+        };
+        element.addEventListener('input', trigger);
+        element.addEventListener('change', trigger);
+    }
+
     async resetAndLoadSignals(refreshCountries = false) {
         this.currentPage = 1;
         if (refreshCountries) {
@@ -171,6 +197,18 @@ class SignalManager {
             }
             const startDate = document.getElementById("startDate").value || this.initialStartDate;
             const endDate = document.getElementById("endDate").value || this.initialEndDate;
+            const includeCountriesInput = document.getElementById('includeCountriesInput');
+            const includeCountriesVal = includeCountriesInput ? includeCountriesInput.value.trim() : '';
+            const excludeCountriesInput = document.getElementById('excludeCountriesInput');
+            const excludeCountriesVal = excludeCountriesInput ? excludeCountriesInput.value.trim() : '';
+            const harmonizeCountriesInput = document.getElementById('harmonizeCountriesInput');
+            const harmonizeCountriesVal = harmonizeCountriesInput ? harmonizeCountriesInput.value.trim() : '';
+            const includeHazardsInput = document.getElementById('includeHazardsInput');
+            const includeHazardsVal = includeHazardsInput ? includeHazardsInput.value.trim() : '';
+            const excludeHazardsInput = document.getElementById('excludeHazardsInput');
+            const excludeHazardsVal = excludeHazardsInput ? excludeHazardsInput.value.trim() : '';
+            const harmonizeHazardsInput = document.getElementById('harmonizeHazardsInput');
+            const harmonizeHazardsVal = harmonizeHazardsInput ? harmonizeHazardsInput.value.trim() : '';
 
             const params = new URLSearchParams();
             if (status && status !== "all") params.append("status", status);
@@ -178,6 +216,12 @@ class SignalManager {
             if (search) params.append("search", search);
             if (startDate) params.append("start_date", startDate);
             if (endDate) params.append("end_date", endDate);
+            if (includeCountriesVal) params.append('include_countries', includeCountriesVal);
+            if (excludeCountriesVal) params.append('exclude_countries', excludeCountriesVal);
+            if (harmonizeCountriesVal) params.append('harmonize_countries', harmonizeCountriesVal);
+            if (includeHazardsVal) params.append('include_hazards', includeHazardsVal);
+            if (excludeHazardsVal) params.append('exclude_hazards', excludeHazardsVal);
+            if (harmonizeHazardsVal) params.append('harmonize_hazards', harmonizeHazardsVal);
 
             const response = await fetch(`/api/signals/countries?${params.toString()}`);
             const result = await response.json();
@@ -252,12 +296,43 @@ class SignalManager {
             isSignalSelect.value = this.initialIsSignal;
         }
 
+        const includeCountriesInput = document.getElementById('includeCountriesInput');
+        if (includeCountriesInput) {
+            includeCountriesInput.value = this.initialIncludeCountries;
+        }
+        const excludeCountriesInput = document.getElementById('excludeCountriesInput');
+        if (excludeCountriesInput) {
+            excludeCountriesInput.value = this.initialExcludeCountries;
+        }
+        const harmonizeCountriesInput = document.getElementById('harmonizeCountriesInput');
+        if (harmonizeCountriesInput) {
+            harmonizeCountriesInput.value = this.initialHarmonizeCountries;
+        }
+        const includeHazardsInput = document.getElementById('includeHazardsInput');
+        if (includeHazardsInput) {
+            includeHazardsInput.value = this.initialIncludeHazards;
+        }
+        const excludeHazardsInput = document.getElementById('excludeHazardsInput');
+        if (excludeHazardsInput) {
+            excludeHazardsInput.value = this.initialExcludeHazards;
+        }
+        const harmonizeHazardsInput = document.getElementById('harmonizeHazardsInput');
+        if (harmonizeHazardsInput) {
+            harmonizeHazardsInput.value = this.initialHarmonizeHazards;
+        }
+
         // Clear initial values after applying so user changes take precedence
         this.initialCountries = [];
         this.initialSearch = '';
         this.initialIsSignal = isSignalSelect ? isSignalSelect.value : 'all';
         this.initialStartDate = '';
         this.initialEndDate = '';
+        this.initialIncludeCountries = '';
+        this.initialExcludeCountries = '';
+        this.initialHarmonizeCountries = '';
+        this.initialIncludeHazards = '';
+        this.initialExcludeHazards = '';
+        this.initialHarmonizeHazards = '';
     }
 
     selectAllCountries() {
@@ -316,7 +391,19 @@ class SignalManager {
         const isSignalFilter = document.getElementById("isSignalFilter").value;
         const pinnedFilter = document.getElementById("pinnedFilter").value;
         const search = document.getElementById("searchInput") ? document.getElementById("searchInput").value.trim() : "";
-        
+        const includeCountriesElement = document.getElementById('includeCountriesInput');
+        const includeCountriesFilter = includeCountriesElement ? includeCountriesElement.value.trim() : '';
+        const excludeCountriesElement = document.getElementById('excludeCountriesInput');
+        const excludeCountriesFilter = excludeCountriesElement ? excludeCountriesElement.value.trim() : '';
+        const harmonizeCountriesElement = document.getElementById('harmonizeCountriesInput');
+        const harmonizeCountriesFilter = harmonizeCountriesElement ? harmonizeCountriesElement.value.trim() : '';
+        const includeHazardsElement = document.getElementById('includeHazardsInput');
+        const includeHazardsFilter = includeHazardsElement ? includeHazardsElement.value.trim() : '';
+        const excludeHazardsElement = document.getElementById('excludeHazardsInput');
+        const excludeHazardsFilter = excludeHazardsElement ? excludeHazardsElement.value.trim() : '';
+        const harmonizeHazardsElement = document.getElementById('harmonizeHazardsInput');
+        const harmonizeHazardsFilter = harmonizeHazardsElement ? harmonizeHazardsElement.value.trim() : '';
+
         // Get page size from selector
         this.pageSize = parseInt(document.getElementById("pageSizeFilter").value);
         
@@ -346,7 +433,26 @@ class SignalManager {
             if (selectedCountries.length > 0) {
                 params.append("countries", selectedCountries.join(","));
             }
-            
+
+            if (includeCountriesFilter) {
+                params.append('include_countries', includeCountriesFilter);
+            }
+            if (excludeCountriesFilter) {
+                params.append('exclude_countries', excludeCountriesFilter);
+            }
+            if (harmonizeCountriesFilter) {
+                params.append('harmonize_countries', harmonizeCountriesFilter);
+            }
+            if (includeHazardsFilter) {
+                params.append('include_hazards', includeHazardsFilter);
+            }
+            if (excludeHazardsFilter) {
+                params.append('exclude_hazards', excludeHazardsFilter);
+            }
+            if (harmonizeHazardsFilter) {
+                params.append('harmonize_hazards', harmonizeHazardsFilter);
+            }
+
             if (startDate) {
                 params.append("start_date", startDate);
             }
