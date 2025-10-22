@@ -10,3 +10,6 @@ log*.txt
 *.log
 .DS_Store
 .env
+test
+EIOS API v2
+documentation

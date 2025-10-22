@@ -90,6 +90,7 @@ def get_processed_signals():
         
         # New filtering parameters
         countries_filter = request.args.get('countries', None)
+        hazards_filter = request.args.get('hazards', None)
         start_date = request.args.get('start_date', None)
         end_date = request.args.get('end_date', None)
 
@@ -118,6 +119,15 @@ def get_processed_signals():
                 for country in countries_list:
                     country_conditions.append(ProcessedSignal.extracted_countries.ilike(f'%{country}%'))
                 query = query.filter(or_(*country_conditions))
+
+        # Filter by hazards if provided
+        if hazards_filter:
+            hazards_list = [h.strip() for h in hazards_filter.split(',') if h.strip()]
+            if hazards_list:
+                hazard_conditions = []
+                for hazard in hazards_list:
+                    hazard_conditions.append(ProcessedSignal.extracted_hazards.ilike(f'%{hazard}%'))
+                query = query.filter(or_(*hazard_conditions))
 
         # Filter by date range if provided
         if start_date:
@@ -600,6 +610,7 @@ def get_countries():
         start_date = request.args.get('start_date', None)
         end_date = request.args.get('end_date', None)
         is_signal = request.args.get('is_signal', 'all')
+        hazards_filter = request.args.get('hazards', None)
 
         query = ProcessedSignal.query
 
@@ -624,6 +635,15 @@ def get_countries():
                 query = query.filter(ProcessedSignal.processed_at < end_dt)
             except ValueError:
                 pass
+
+        # Filter by hazards if provided
+        if hazards_filter:
+            hazards_list = [h.strip() for h in hazards_filter.split(',') if h.strip()]
+            if hazards_list:
+                hazard_conditions = []
+                for hazard in hazards_list:
+                    hazard_conditions.append(ProcessedSignal.extracted_hazards.ilike(f'%{hazard}%'))
+                query = query.filter(or_(*hazard_conditions))
 
         if search_term:
             escaped = search_term.replace('%', '\\%').replace('_', '\\_')
@@ -656,6 +676,84 @@ def get_countries():
     except Exception as e:
         logger.error(f"Error retrieving countries: {e}")
         return jsonify({'success': False, 'message': f'Error retrieving countries: {str(e)}'}), 500
+
+
+@signals_bp.route('/signals/hazards', methods=['GET'])
+def get_hazards():
+    """Return unique hazards from processed signals applying optional filters."""
+    try:
+        # Optional filters
+        status_filter = request.args.get('status', 'all')
+        search_term = request.args.get('search', None)
+        start_date = request.args.get('start_date', None)
+        end_date = request.args.get('end_date', None)
+        is_signal = request.args.get('is_signal', 'all')
+        countries_filter = request.args.get('countries', None)
+
+        query = ProcessedSignal.query
+
+        if is_signal in ('Yes', 'No'):
+            query = query.filter(ProcessedSignal.is_signal == is_signal)
+
+        if status_filter != 'all':
+            query = query.filter(ProcessedSignal.status == status_filter)
+
+        if start_date:
+            from datetime import datetime
+            try:
+                start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+                query = query.filter(ProcessedSignal.processed_at >= start_dt)
+            except ValueError:
+                pass
+
+        if end_date:
+            from datetime import datetime, timedelta
+            try:
+                end_dt = datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
+                query = query.filter(ProcessedSignal.processed_at < end_dt)
+            except ValueError:
+                pass
+
+        # Filter by countries if provided
+        if countries_filter:
+            countries_list = [c.strip() for c in countries_filter.split(',') if c.strip()]
+            if countries_list:
+                country_conditions = []
+                for country in countries_list:
+                    country_conditions.append(ProcessedSignal.extracted_countries.ilike(f'%{country}%'))
+                query = query.filter(or_(*country_conditions))
+
+        if search_term:
+            escaped = search_term.replace('%', '\\%').replace('_', '\\_')
+            pattern = f"%{escaped}%"
+            query = query.join(RawSignal, ProcessedSignal.raw_signal).filter(
+                or_(
+                    RawSignal.original_title.ilike(pattern),
+                    RawSignal.title.ilike(pattern),
+                    RawSignal.translated_description.ilike(pattern),
+                    RawSignal.translated_abstractive_summary.ilike(pattern),
+                    RawSignal.abstractive_summary.ilike(pattern),
+                    ProcessedSignal.extracted_countries.ilike(pattern),
+                    ProcessedSignal.extracted_hazards.ilike(pattern),
+                    ProcessedSignal.risk_signal_assessment.ilike(pattern)
+                )
+            )
+
+        signals = query.filter(ProcessedSignal.extracted_hazards.isnot(None)).all()
+
+        hazards_set = set()
+        for signal in signals:
+            if signal.extracted_hazards:
+                hazards = [h.strip() for h in signal.extracted_hazards.split(';') if h.strip()]
+                hazards_set.update(hazards)
+
+        hazards_list = sorted(list(hazards_set))
+
+        return jsonify({'success': True, 'hazards': hazards_list})
+
+    except Exception as e:
+        logger.error(f"Error retrieving hazards: {e}")
+        return jsonify({'success': False, 'message': f'Error retrieving hazards: {str(e)}'}), 500
 
 
 @signals_bp.route('/signals/cleanup', methods=['POST'])
@@ -823,6 +921,7 @@ def export_signals_csv():
             signals_only = filters.get('signals_only', False)
             search_term = filters.get('search')
             countries_filter = filters.get('countries')
+            hazards_filter = filters.get('hazards')
             start_date = filters.get('start_date')
             end_date = filters.get('end_date')
             
@@ -845,6 +944,14 @@ def export_signals_csv():
                     for country in countries_list:
                         country_conditions.append(ProcessedSignal.extracted_countries.ilike(f'%{country}%'))
                     query = query.filter(or_(*country_conditions))
+            
+            if hazards_filter:
+                hazards_list = [h.strip() for h in hazards_filter.split(',') if h.strip()]
+                if hazards_list:
+                    hazard_conditions = []
+                    for hazard in hazards_list:
+                        hazard_conditions.append(ProcessedSignal.extracted_hazards.ilike(f'%{hazard}%'))
+                    query = query.filter(or_(*hazard_conditions))
             
             if start_date:
                 try:

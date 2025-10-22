@@ -7,8 +7,10 @@ class SignalManager {
         this.totalPages = 1;
         this.totalCount = 0;
         this.countries = [];
+        this.hazards = [];
         const params = new URLSearchParams(window.location.search);
         this.initialCountries = params.get('countries') ? params.get('countries').split(',').map(c => c.trim()).filter(Boolean) : [];
+        this.initialHazards = params.get('hazards') ? params.get('hazards').split(',').map(h => h.trim()).filter(Boolean) : [];
         this.initialSearch = params.get('search') || '';
         this.initialStartDate = params.get('start_date') || '';
         this.initialEndDate = params.get('end_date') || '';
@@ -34,6 +36,7 @@ class SignalManager {
     this.bindEvents();
     this._ensureRiskAssessmentStyles();
         await this.loadCountries();
+        await this.loadHazards();
         this.applyInitialFilters();
         this.loadSignals();
         this.loadTags();
@@ -90,13 +93,26 @@ class SignalManager {
         }
 
         // Country filter events
-        document.getElementById("countryFilter").addEventListener("change", () => this.resetAndLoadSignals());
+        document.getElementById("countryFilter").addEventListener("change", () => {
+            this.onFilterChange();
+        });
         document.getElementById("selectAllCountries").addEventListener("click", () => this.selectAllCountries());
         document.getElementById("clearAllCountries").addEventListener("click", () => this.clearAllCountries());
 
+        // Hazards filter events
+        document.getElementById("hazardFilter").addEventListener("change", () => {
+            this.onFilterChange();
+        });
+        document.getElementById("selectAllHazards").addEventListener("click", () => this.selectAllHazards());
+        document.getElementById("clearAllHazards").addEventListener("click", () => this.clearAllHazards());
+
         // Date filter events
-        document.getElementById("startDate").addEventListener("change", () => this.resetAndLoadSignals(true));
-        document.getElementById("endDate").addEventListener("change", () => this.resetAndLoadSignals(true));
+        document.getElementById("startDate").addEventListener("change", () => {
+            this.onFilterChange();
+        });
+        document.getElementById("endDate").addEventListener("change", () => {
+            this.onFilterChange();
+        });
         document.getElementById("clearDateFilter").addEventListener("click", () => this.clearDateFilter());
 
         // Pagination events
@@ -172,12 +188,16 @@ class SignalManager {
             const startDate = document.getElementById("startDate").value || this.initialStartDate;
             const endDate = document.getElementById("endDate").value || this.initialEndDate;
 
+            // Get selected hazards for filtering
+            const selectedHazards = this.getSelectedHazards();
+
             const params = new URLSearchParams();
             if (status && status !== "all") params.append("status", status);
             if (isSignal && isSignal !== "all") params.append("is_signal", isSignal);
             if (search) params.append("search", search);
             if (startDate) params.append("start_date", startDate);
             if (endDate) params.append("end_date", endDate);
+            if (selectedHazards.length > 0) params.append("hazards", selectedHazards.join(','));
 
             const response = await fetch(`/api/signals/countries?${params.toString()}`);
             const result = await response.json();
@@ -191,12 +211,78 @@ class SignalManager {
         }
     }
 
+    async loadHazards() {
+        try {
+            const status = document.getElementById("statusFilter").value;
+            const isSignalSelect = document.getElementById("isSignalFilter");
+            let isSignal = isSignalSelect ? isSignalSelect.value : 'all';
+            if (isSignal === 'all' && this.initialIsSignal !== 'all') {
+                isSignal = this.initialIsSignal;
+            }
+            const searchInput = document.getElementById("searchInput");
+            let search = searchInput ? searchInput.value.trim() : "";
+            if (!search && this.initialSearch) {
+                search = this.initialSearch;
+            }
+            const startDate = document.getElementById("startDate").value || this.initialStartDate;
+            const endDate = document.getElementById("endDate").value || this.initialEndDate;
+
+            // Get selected countries for filtering
+            const selectedCountries = this.getSelectedCountries();
+
+            const params = new URLSearchParams();
+            if (status && status !== "all") params.append("status", status);
+            if (isSignal && isSignal !== "all") params.append("is_signal", isSignal);
+            if (search) params.append("search", search);
+            if (startDate) params.append("start_date", startDate);
+            if (endDate) params.append("end_date", endDate);
+            if (selectedCountries.length > 0) params.append("countries", selectedCountries.join(','));
+
+            const response = await fetch(`/api/signals/hazards?${params.toString()}`);
+            const result = await response.json();
+
+            if (result.success) {
+                this.hazards = result.hazards;
+                this.renderHazardFilter();
+            }
+        } catch (error) {
+            console.error("Error loading hazards:", error);
+        }
+    }
+
+    getSelectedCountries() {
+        const countryFilter = document.getElementById("countryFilter");
+        if (!countryFilter) return [];
+        const checkboxes = countryFilter.querySelectorAll('input[type="checkbox"]:checked');
+        return Array.from(checkboxes).map(cb => cb.value);
+    }
+
+    getSelectedHazards() {
+        const hazardFilter = document.getElementById("hazardFilter");
+        if (!hazardFilter) return [];
+        const checkboxes = hazardFilter.querySelectorAll('input[type="checkbox"]:checked');
+        return Array.from(checkboxes).map(cb => cb.value);
+    }
+
+    // Interactive filter change handler
+    async onFilterChange() {
+        // Update both filter lists to show only available options based on current selections
+        await Promise.all([this.loadCountries(), this.loadHazards()]);
+        // Then reload signals
+        this.resetAndLoadSignals(true);
+    }
+
     renderCountryFilter() {
         const countryFilter = document.getElementById("countryFilter");
         const previouslySelected = new Set(
             Array.from(countryFilter.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value)
         );
         countryFilter.innerHTML = "";
+
+        if (this.countries.length === 0) {
+            countryFilter.innerHTML = '<div class="text-sm text-gray-500">No countries available</div>';
+            return;
+        }
 
         this.countries.forEach(country => {
             const checkboxContainer = document.createElement("div");
@@ -210,7 +296,6 @@ class SignalManager {
             if (previouslySelected.has(country) || this.initialCountries.includes(country)) {
                 checkbox.checked = true;
             }
-            checkbox.addEventListener("change", () => this.resetAndLoadSignals());
 
             const label = document.createElement("label");
             label.htmlFor = `country-${country}`;
@@ -220,6 +305,42 @@ class SignalManager {
             checkboxContainer.appendChild(checkbox);
             checkboxContainer.appendChild(label);
             countryFilter.appendChild(checkboxContainer);
+        });
+    }
+
+    renderHazardFilter() {
+        const hazardFilter = document.getElementById("hazardFilter");
+        const previouslySelected = new Set(
+            Array.from(hazardFilter.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value)
+        );
+        hazardFilter.innerHTML = "";
+
+        if (this.hazards.length === 0) {
+            hazardFilter.innerHTML = '<div class="text-sm text-gray-500">No hazards available</div>';
+            return;
+        }
+
+        this.hazards.forEach(hazard => {
+            const checkboxContainer = document.createElement("div");
+            checkboxContainer.className = "flex items-center space-x-2 mb-1";
+
+            const checkbox = document.createElement("input");
+            checkbox.type = "checkbox";
+            checkbox.id = `hazard-${hazard}`;
+            checkbox.value = hazard;
+            checkbox.className = "rounded border-gray-300 text-blue-600 focus:ring-blue-500";
+            if (previouslySelected.has(hazard) || this.initialHazards.includes(hazard)) {
+                checkbox.checked = true;
+            }
+
+            const label = document.createElement("label");
+            label.htmlFor = `hazard-${hazard}`;
+            label.textContent = hazard;
+            label.className = "text-sm text-gray-700 cursor-pointer";
+
+            checkboxContainer.appendChild(checkbox);
+            checkboxContainer.appendChild(label);
+            hazardFilter.appendChild(checkboxContainer);
         });
     }
 
@@ -234,6 +355,15 @@ class SignalManager {
             const countryFilter = document.getElementById("countryFilter");
             this.initialCountries.forEach(country => {
                 const checkbox = countryFilter.querySelector(`input[value="${country}"]`);
+                if (checkbox) {
+                    checkbox.checked = true;
+                }
+            });
+        }
+        if (this.initialHazards.length > 0) {
+            const hazardFilter = document.getElementById("hazardFilter");
+            this.initialHazards.forEach(hazard => {
+                const checkbox = hazardFilter.querySelector(`input[value="${hazard}"]`);
                 if (checkbox) {
                     checkbox.checked = true;
                 }
@@ -254,6 +384,7 @@ class SignalManager {
 
         // Clear initial values after applying so user changes take precedence
         this.initialCountries = [];
+        this.initialHazards = [];
         this.initialSearch = '';
         this.initialIsSignal = isSignalSelect ? isSignalSelect.value : 'all';
         this.initialStartDate = '';
@@ -266,7 +397,7 @@ class SignalManager {
         checkboxes.forEach(checkbox => {
             checkbox.checked = true;
         });
-        this.resetAndLoadSignals();
+        this.onFilterChange();
     }
 
     clearAllCountries() {
@@ -275,13 +406,31 @@ class SignalManager {
         checkboxes.forEach(checkbox => {
             checkbox.checked = false;
         });
-        this.resetAndLoadSignals();
+        this.onFilterChange();
+    }
+
+    selectAllHazards() {
+        const hazardFilter = document.getElementById("hazardFilter");
+        const checkboxes = hazardFilter.querySelectorAll('input[type="checkbox"]');
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = true;
+        });
+        this.onFilterChange();
+    }
+
+    clearAllHazards() {
+        const hazardFilter = document.getElementById("hazardFilter");
+        const checkboxes = hazardFilter.querySelectorAll('input[type="checkbox"]');
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = false;
+        });
+        this.onFilterChange();
     }
 
     clearDateFilter() {
         document.getElementById("startDate").value = "";
         document.getElementById("endDate").value = "";
-        this.resetAndLoadSignals(true);
+        this.onFilterChange();
     }
 
     async fetchSignals() {
@@ -321,8 +470,10 @@ class SignalManager {
         this.pageSize = parseInt(document.getElementById("pageSizeFilter").value);
         
         // Get country filter from checkboxes
-        const countryFilter = document.getElementById("countryFilter");
-        const selectedCountries = Array.from(countryFilter.querySelectorAll('input[type="checkbox"]:checked')).map(checkbox => checkbox.value);
+        const selectedCountries = this.getSelectedCountries();
+        
+        // Get hazard filter from checkboxes
+        const selectedHazards = this.getSelectedHazards();
         
         // Get date filters
         const startDate = document.getElementById("startDate").value;
@@ -345,6 +496,10 @@ class SignalManager {
             
             if (selectedCountries.length > 0) {
                 params.append("countries", selectedCountries.join(","));
+            }
+            
+            if (selectedHazards.length > 0) {
+                params.append("hazards", selectedHazards.join(","));
             }
             
             if (startDate) {
@@ -1027,8 +1182,10 @@ class SignalManager {
         const search = document.getElementById("searchInput") ? document.getElementById("searchInput").value.trim() : "";
         
         // Get country filter from checkboxes
-        const countryFilter = document.getElementById("countryFilter");
-        const selectedCountries = Array.from(countryFilter.querySelectorAll('input[type="checkbox"]:checked')).map(checkbox => checkbox.value);
+        const selectedCountries = this.getSelectedCountries();
+        
+        // Get hazard filter from checkboxes
+        const selectedHazards = this.getSelectedHazards();
         
         // Get date filters
         const startDate = document.getElementById("startDate").value;
@@ -1040,6 +1197,7 @@ class SignalManager {
             signals_only: isSignalFilter === "Yes",
             search: search || undefined,
             countries: selectedCountries.length > 0 ? selectedCountries.join(",") : undefined,
+            hazards: selectedHazards.length > 0 ? selectedHazards.join(",") : undefined,
             start_date: startDate || undefined,
             end_date: endDate || undefined
         };
