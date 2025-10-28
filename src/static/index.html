@@ -3,15 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EIOS Signal Management</title>
+    <title>EIOS Article Management</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 
     <style>
-        .signal-card {
+        .article-card {
             transition: all 0.3s ease;
         }
-        .signal-card:hover {
+        .article-card:hover {
             transform: translateY(-2px);
             box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
         }
@@ -61,6 +61,57 @@
                 width: 100%;
             }
         }
+        
+        /* Tooltip styles */
+        .tooltip {
+            position: relative;
+            display: inline-block;
+        }
+        .tooltip .tooltiptext {
+            visibility: hidden;
+            width: 250px;
+            background-color: #1f2937;
+            color: white;
+            text-align: left;
+            border-radius: 6px;
+            padding: 8px 12px;
+            position: absolute;
+            z-index: 1000;
+            bottom: 125%;
+            left: 50%;
+            margin-left: -125px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            font-size: 0.875rem;
+            line-height: 1.4;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .tooltip .tooltiptext::after {
+            content: "";
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            margin-left: -5px;
+            border-width: 5px;
+            border-style: solid;
+            border-color: #1f2937 transparent transparent transparent;
+        }
+        .tooltip:hover .tooltiptext {
+            visibility: visible;
+            opacity: 1;
+        }
+        
+        /* Tooltip positioning variants */
+        .tooltip-left .tooltiptext {
+            left: auto;
+            right: 0;
+            margin-left: 0;
+            margin-right: -10px;
+        }
+        .tooltip-left .tooltiptext::after {
+            left: auto;
+            right: 20px;
+        }
     </style>
 </head>
 <body class="bg-gray-50 min-h-screen">
@@ -70,26 +121,30 @@
             <div class="flex justify-between items-center py-4">
                 <div class="flex items-center">
                     <i class="fas fa-signal text-blue-600 text-2xl mr-3"></i>
-                    <h1 class="text-2xl font-bold text-gray-900">EIOS Signal Management</h1>
+                    <h1 class="text-2xl font-bold text-gray-900">EIOS Article Management</h1>
                 </div>
-                <div class="flex items-center space-x-4">
+                <div class="flex items-center space-x-3">
                     <div class="flex items-center space-x-2">
-                        <span id="schedulerStatus" class="text-sm text-gray-600">Scheduler: Stopped</span>
-                        <button id="toggleSchedulerBtn" class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm transition-colors">
+                        <span id="schedulerStatus" class="text-sm text-gray-600 font-medium">Scheduler: Stopped</span>
+                        <button id="toggleSchedulerBtn" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded-lg text-sm font-medium transition-colors h-8">
                             Start
                         </button>
                     </div>
-                    <button id="fetchBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors">
+                    <button id="fetchBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors text-sm font-medium h-10">
                         <i class="fas fa-download"></i>
-                        <span>Fetch Signals</span>
+                        <span>Fetch Articles</span>
                     </button>
-                    <button id="configBtn" class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors">
+                    <button id="configBtn" class="bg-blue-700 hover:bg-blue-800 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors text-sm font-medium h-10">
                         <i class="fas fa-cog"></i>
                         <span>Configure</span>
                     </button>
-                    <a href="dashboard.html" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors">
+                    <a href="dashboard.html" class="bg-blue-800 hover:bg-blue-900 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors text-sm font-medium h-10">
                         <i class="fas fa-chart-pie"></i>
                         <span>Dashboard</span>
+                    </a>
+                    <a href="docs.html" class="bg-blue-900 hover:bg-gray-800 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors text-sm font-medium h-10">
+                        <i class="fas fa-book"></i>
+                        <span>Documentation</span>
                     </a>
                 </div>
             </div>
@@ -109,127 +164,226 @@
         <!-- Filters and Actions -->
         <div class="bg-white rounded-lg shadow-sm p-6 mb-6 floating-filter">
             <div class="flex flex-col space-y-4">
-                <!-- First row of filters -->
-                <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between space-y-4 lg:space-y-0">
-                    <div class="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-4">
-                        <!-- Status filter. Counts will be injected into option labels. -->
-                        <select id="statusFilter" class="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                            <option value="all">All Signals</option>
-                            <option value="new">New Signals</option>
-                            <option value="flagged">Flagged Signals</option>
-                            <option value="discarded">Discarded Signals</option>
-                        </select>
-
-                        <!-- Filter to select Yes/No signals -->
-                        <select id="isSignalFilter" class="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                            <option value="all">All Flags</option>
-                            <option value="Yes">True Signals</option>
-                            <option value="No">Not Signals</option>
-                        </select>
-
-                        <!-- Filter to select pinned/unpinned signals -->
-                        <select id="pinnedFilter" class="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                            <option value="all">All Articles</option>
-                            <option value="pinned">Pinned</option>
-                            <option value="unpinned">Unpinned</option>
-                        </select>
-
-                        <!-- Search box -->
-                        <input type="text" id="searchInput" placeholder="Search..." class="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full sm:w-auto"/>
+                <!-- First row: Filter and Search -->
+                <div class="flex flex-col lg:flex-row space-y-2 lg:space-y-0 lg:space-x-4 lg:items-end">
+                    <!-- Combined multi-select filter -->
+                    <div class="relative w-80 tooltip">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Filter Articles</label>
+                        <div class="relative">
+                            <div id="combinedFilterDropdown" class="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white cursor-pointer w-full h-10">
+                                <div class="flex items-center justify-between h-full">
+                                    <span id="combinedFilterLabel" class="text-gray-700 text-sm">All Articles</span>
+                                    <i class="fas fa-chevron-down text-gray-400"></i>
+                                </div>
+                            </div>
+                        </div>
+                        <span class="tooltiptext">
+                            <strong>Filter Articles</strong><br>
+                            Select multiple criteria to narrow down articles. Options:<br>
+                            • <strong>Pinned/Unpinned:</strong> Articles marked as important in EIOS<br>
+                            • <strong>Flagged/Unflagged:</strong> Articles you've manually flagged for review<br>
+                            • <strong>True Signal/Not Signal:</strong> AI-assessed emergency signals<br>
+                            Multiple selections use AND logic (all conditions must match).
+                        </span>
+                            <div id="combinedFilterOptions" class="absolute top-full left-0 right-0 bg-white border border-gray-300 rounded-lg shadow-lg z-20 hidden mt-1">
+                                <div class="p-2 space-y-1">
+                                    <label class="flex items-center space-x-2 p-2 hover:bg-gray-50 rounded cursor-pointer">
+                                        <input type="checkbox" value="pinned" class="combined-filter-checkbox">
+                                        <span>Pinned</span>
+                                    </label>
+                                    <label class="flex items-center space-x-2 p-2 hover:bg-gray-50 rounded cursor-pointer">
+                                        <input type="checkbox" value="unpinned" class="combined-filter-checkbox">
+                                        <span>Unpinned</span>
+                                    </label>
+                                    <label class="flex items-center space-x-2 p-2 hover:bg-gray-50 rounded cursor-pointer">
+                                        <input type="checkbox" value="flagged" class="combined-filter-checkbox">
+                                        <span>Flagged</span>
+                                    </label>
+                                    <label class="flex items-center space-x-2 p-2 hover:bg-gray-50 rounded cursor-pointer">
+                                        <input type="checkbox" value="unflagged" class="combined-filter-checkbox">
+                                        <span>Unflagged</span>
+                                    </label>
+                                    <label class="flex items-center space-x-2 p-2 hover:bg-gray-50 rounded cursor-pointer">
+                                        <input type="checkbox" value="true_signal" class="combined-filter-checkbox">
+                                        <span>True Signal</span>
+                                    </label>
+                                    <label class="flex items-center space-x-2 p-2 hover:bg-gray-50 rounded cursor-pointer">
+                                        <input type="checkbox" value="not_signal" class="combined-filter-checkbox">
+                                        <span>Not Signal</span>
+                                    </label>
+                                </div>
+                                <div class="border-t border-gray-200 p-2 flex space-x-2">
+                                    <button id="clearAllFilters" class="text-xs text-blue-400 hover:text-blue-600 px-2 py-1 font-medium">Clear All</button>
+                                    <button id="selectAllFilters" class="text-xs text-blue-600 hover:text-blue-800 px-2 py-1 font-medium">Select All</button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="button-group">
-                        <!-- Selection Controls -->
-                        <div class="flex space-x-2">
-                            <button id="selectAllBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg flex items-center space-x-2 transition-colors text-sm">
-                                <i class="fas fa-check-square"></i>
-                                <span>Select All</span>
-                            </button>
-                            <button id="unselectAllBtn" class="bg-gray-600 hover:bg-gray-700 text-white px-3 py-2 rounded-lg flex items-center space-x-2 transition-colors text-sm">
-                                <i class="fas fa-square"></i>
-                                <span>Unselect All</span>
-                            </button>
-                        </div>
-                        
-                        <!-- Action Buttons -->
-                        <div class="flex space-x-2">
-                            <button id="flagSelectedBtn" class="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled>
-                                <i class="fas fa-flag"></i>
-                                <span>Flag Selected</span>
-                            </button>
-                            <button id="discardSelectedBtn" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled>
-                                <i class="fas fa-trash"></i>
-                                <span>Discard Selected</span>
-                            </button>
-                            <button id="exportSelectedBtn" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled>
-                                <i class="fas fa-download"></i>
-                                <span>Export Selected</span>
-                            </button>
-                        </div>
-                        
-                        <!-- Other Actions -->
-                        <div class="flex space-x-2">
-                            <button id="discardNonFlaggedBtn" class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors">
-                                <i class="fas fa-broom"></i>
-                                <span>Discard Non-Flagged</span>
-                            </button>
-                            <button id="exportAllBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors">
-                                <i class="fas fa-file-csv"></i>
-                                <span>Export All</span>
-                            </button>
-                        </div>
+
+                    <!-- Search box -->
+                    <div class="flex-1 tooltip">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Search</label>
+                        <input type="text" id="searchInput" placeholder="Search..." class="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full h-10 text-sm"/>
+                        <span class="tooltiptext">
+                            <strong>Keyword Search</strong><br>
+                            Searches across multiple fields including:<br>
+                            • Article titles and summaries<br>
+                            • AI risk assessments<br>
+                            • Extracted countries and hazards<br>
+                            • Original and translated content<br>
+                            Case-insensitive partial matching (e.g., "cycl" matches "Cyclone").
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Second row: Action Buttons -->
+                <div class="flex flex-wrap gap-3 justify-center lg:justify-start">
+                    <!-- Selection Controls -->
+                    <div class="tooltip">
+                        <button id="selectAllBtn" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors text-sm font-medium h-10 min-w-fit">
+                            <i class="fas fa-check-square"></i>
+                            <span>Select All</span>
+                        </button>
+                        <span class="tooltiptext">
+                            <strong>Select All</strong><br>
+                            Select all currently visible articles on this page for batch actions.
+                        </span>
+                    </div>
+                    <div class="tooltip">
+                        <button id="unselectAllBtn" class="bg-blue-400 hover:bg-blue-500 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors text-sm font-medium h-10 min-w-fit">
+                            <i class="fas fa-square"></i>
+                            <span>Unselect All</span>
+                        </button>
+                        <span class="tooltiptext">
+                            <strong>Unselect All</strong><br>
+                            Clear all article selections on this page.
+                        </span>
+                    </div>
+                    
+                    <!-- Action Buttons -->
+                    <div class="tooltip">
+                        <button id="flagSelectedBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors text-sm font-medium h-10 min-w-fit disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                            <i class="fas fa-flag"></i>
+                            <span>Flag Selected</span>
+                        </button>
+                        <span class="tooltiptext">
+                            <strong>Flag Selected</strong><br>
+                            Mark selected articles as "flagged" for manual review. Flagged articles can be filtered and exported separately.
+                        </span>
+                    </div>
+                    <div class="tooltip">
+                        <button id="discardSelectedBtn" class="bg-blue-700 hover:bg-blue-800 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors text-sm font-medium h-10 min-w-fit disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                            <i class="fas fa-trash"></i>
+                            <span>Discard Selected</span>
+                        </button>
+                        <span class="tooltiptext">
+                            <strong>Discard Selected</strong><br>
+                            Mark selected articles as "discarded" (not deleted from database). Discarded articles remain accessible but are filtered out by default.
+                        </span>
+                    </div>
+                    <div class="tooltip">
+                        <button id="exportSelectedBtn" class="bg-blue-800 hover:bg-blue-900 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors text-sm font-medium h-10 min-w-fit disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                            <i class="fas fa-download"></i>
+                            <span>Export Selected</span>
+                        </button>
+                        <span class="tooltiptext">
+                            <strong>Export Selected</strong><br>
+                            Download selected articles as a CSV file containing all article data, AI assessments, and metadata.
+                        </span>
+                    </div>
+                    
+                    <!-- Other Actions -->
+                    <div class="tooltip">
+                        <button id="discardNonFlaggedBtn" class="bg-blue-300 hover:bg-blue-400 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors text-sm font-medium h-10 min-w-fit">
+                            <i class="fas fa-broom"></i>
+                            <span>Discard Non-Flagged</span>
+                        </button>
+                        <span class="tooltiptext">
+                            <strong>Discard Non-Flagged</strong><br>
+                            Bulk action to discard all "new" articles that haven't been flagged. Useful for clearing processed articles after review.
+                        </span>
+                    </div>
+                    <div class="tooltip">
+                        <button id="exportAllBtn" class="bg-blue-900 hover:bg-gray-800 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors text-sm font-medium h-10 min-w-fit">
+                            <i class="fas fa-file-csv"></i>
+                            <span>Export All</span>
+                        </button>
+                        <span class="tooltiptext">
+                            <strong>Export All</strong><br>
+                            Download all articles matching current filters as a CSV file. Respects search and filter criteria.
+                        </span>
                     </div>
                 </div>
                 
                 <!-- Second row of filters -->
                 <div class="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-4">
                     <!-- Country filter -->
-                    <div class="flex-1">
+                    <div class="flex-1 tooltip">
                         <label class="block text-sm font-medium text-gray-700 mb-1">Countries</label>
                         <div class="relative">
                             <div id="countryFilter" class="border border-gray-300 rounded-lg px-3 py-2 max-h-32 overflow-y-auto bg-white">
                                 <!-- Countries will be loaded dynamically as checkboxes -->
                             </div>
                             <div class="mt-1 flex space-x-2">
-                                <button id="selectAllCountries" class="text-xs text-blue-600 hover:text-blue-800">Select All</button>
-                                <button id="clearAllCountries" class="text-xs text-red-600 hover:text-red-800">Clear All</button>
+                                <button id="selectAllCountries" class="text-xs text-blue-600 hover:text-blue-800 font-medium">Select All</button>
+                                <button id="clearAllCountries" class="text-xs text-blue-400 hover:text-blue-600 font-medium">Clear All</button>
                             </div>
                         </div>
+                        <span class="tooltiptext">
+                            <strong>Countries Filter</strong><br>
+                            Filter articles by countries mentioned in the content or extracted by AI analysis. Shows countries found in currently filtered articles. Use checkboxes to select multiple countries.
+                        </span>
                     </div>
 
                     <!-- Hazards filter -->
-                    <div class="flex-1">
+                    <div class="flex-1 tooltip">
                         <label class="block text-sm font-medium text-gray-700 mb-1">Hazards</label>
                         <div class="relative">
                             <div id="hazardFilter" class="border border-gray-300 rounded-lg px-3 py-2 max-h-32 overflow-y-auto bg-white">
                                 <!-- Hazards will be loaded dynamically as checkboxes -->
                             </div>
                             <div class="mt-1 flex space-x-2">
-                                <button id="selectAllHazards" class="text-xs text-blue-600 hover:text-blue-800">Select All</button>
-                                <button id="clearAllHazards" class="text-xs text-red-600 hover:text-red-800">Clear All</button>
+                                <button id="selectAllHazards" class="text-xs text-blue-600 hover:text-blue-800 font-medium">Select All</button>
+                                <button id="clearAllHazards" class="text-xs text-blue-400 hover:text-blue-600 font-medium">Clear All</button>
                             </div>
                         </div>
+                        <span class="tooltiptext">
+                            <strong>Hazards Filter</strong><br>
+                            Filter articles by risk types and hazards identified by AI analysis. Examples: Environmental (Cyclone), Disease Outbreak, Security threats. Shows hazards found in currently filtered articles.
+                        </span>
                     </div>
                     
                     <!-- Date range filter -->
-                    <div class="flex-1">
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Process Date Range</label>
+                    <div class="flex-1 tooltip">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">
+                            Process Date & Time Range
+                            <span id="timezoneIndicator" class="text-xs text-gray-500 font-normal ml-1"></span>
+                        </label>
                         <div class="flex space-x-2">
-                            <input type="date" id="startDate" class="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent flex-1">
+                            <input type="datetime-local" id="startDate" class="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent flex-1">
                             <span class="self-center text-gray-500">to</span>
-                            <input type="date" id="endDate" class="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent flex-1">
+                            <input type="datetime-local" id="endDate" class="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent flex-1">
                         </div>
-                        <button id="clearDateFilter" class="mt-1 text-xs text-red-600 hover:text-red-800">Clear Dates</button>
+                        <button id="clearDateFilter" class="mt-1 text-xs text-blue-400 hover:text-blue-600 font-medium">Clear Dates</button>
+                        <span class="tooltiptext">
+                            <strong>Process Date & Time Range</strong><br>
+                            Filter articles by when they were processed by the AI system (not publication date). Uses your local timezone and automatically converts to UTC for filtering. Supports hourly precision.
+                        </span>
                     </div>
                     
                     <!-- Page size selector -->
-                    <div>
+                    <div class="tooltip">
                         <label class="block text-sm font-medium text-gray-700 mb-1">Page Size</label>
-                        <select id="pageSizeFilter" class="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        <select id="pageSizeFilter" class="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm font-medium h-10">
                             <option value="10">10</option>
                             <option value="20" selected>20</option>
                             <option value="50">50</option>
                             <option value="100">100</option>
                         </select>
+                        <span class="tooltiptext">
+                            <strong>Page Size</strong><br>
+                            Number of articles to display per page. Larger page sizes load more content but may be slower. Default is 20 articles per page.
+                        </span>
                     </div>
                 </div>
             </div>
@@ -239,7 +393,7 @@
         <div id="paginationTop" class="bg-white rounded-lg shadow-sm p-4 mb-4 hidden">
             <div class="flex items-center justify-between">
                 <div class="text-sm text-gray-700">
-                    <span id="paginationInfo">Showing 1-20 of 100 signals</span>
+                    <span id="paginationInfo">Showing 1-20 of 100 articles</span>
                 </div>
                 <div class="flex items-center space-x-2">
                     <button id="prevPageBtn" class="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
@@ -255,16 +409,16 @@
             </div>
         </div>
 
-        <!-- Signals List -->
+        <!-- Articles List -->
         <div id="signalsList" class="space-y-4">
-            <!-- Signals will be loaded here -->
+            <!-- Articles will be loaded here -->
         </div>
 
         <!-- Bottom Pagination Controls -->
         <div id="paginationBottom" class="bg-white rounded-lg shadow-sm p-4 mt-4 hidden">
             <div class="flex items-center justify-between">
                 <div class="text-sm text-gray-700">
-                    <span id="paginationInfoBottom">Showing 1-20 of 100 signals</span>
+                    <span id="paginationInfoBottom">Showing 1-20 of 100 articles</span>
                 </div>
                 <div class="flex items-center space-x-2">
                     <button id="prevPageBtnBottom" class="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
@@ -283,8 +437,8 @@
         <!-- Empty State -->
         <div id="emptyState" class="text-center py-12 hidden">
             <i class="fas fa-inbox text-gray-400 text-6xl mb-4"></i>
-            <h3 class="text-lg font-medium text-gray-900 mb-2">No signals found</h3>
-            <p class="text-gray-500">Click "Fetch Signals" to load new signals from EIOS.</p>
+            <h3 class="text-lg font-medium text-gray-900 mb-2">No articles found</h3>
+            <p class="text-gray-500">Click "Fetch Articles" to load new articles from EIOS.</p>
         </div>
     </main>
 
@@ -315,7 +469,7 @@
                                 <option value="deepseek">DeepSeek</option>
                                 <option value="local">Local LLM</option>
                             </select>
-                            <p class="text-xs text-gray-500 mt-1">Select which provider to use when evaluating signals</p>
+                            <p class="text-xs text-gray-500 mt-1">Select which provider to use when evaluating articles</p>
                         </div>
 
                         <!-- OpenAI configuration -->
@@ -351,15 +505,15 @@
                         <!-- Risk evaluation prompt -->
                         <div>
                             <label for="riskEvaluationPrompt" class="block text-sm font-medium text-gray-700 mb-2">Risk Evaluation Prompt</label>
-                            <textarea id="riskEvaluationPrompt" rows="4" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Customize how the AI evaluates signals. Use {text} where the raw content should be inserted."></textarea>
+                            <textarea id="riskEvaluationPrompt" rows="4" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Customize how the AI evaluates articles. Use {text} where the raw content should be inserted."></textarea>
                         </div>
 
                         <!-- Database Cleanup -->
                         <div class="border-t border-gray-200 pt-4 mt-4">
                             <h4 class="text-md font-medium text-gray-900 mb-2">Database Cleanup</h4>
-                            <label for="cleanupDate" class="block text-sm font-medium text-gray-700 mb-2">Remove signals processed before</label>
+                            <label for="cleanupDate" class="block text-sm font-medium text-gray-700 mb-2">Remove articles processed before</label>
                             <input type="date" id="cleanupDate" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                            <p class="text-xs text-gray-500 mt-1">All signals processed before this date will be permanently deleted</p>
+                            <p class="text-xs text-gray-500 mt-1">All articles processed before this date will be permanently deleted</p>
                             <div class="mt-4 flex space-x-2">
                                 <button id="previewCleanupBtn" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm transition-colors">Preview Cleanup</button>
                                 <button id="executeCleanupBtn" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm transition-colors" disabled>Execute Cleanup</button>

@@ -1,7 +1,7 @@
-class SignalManager {
+class ArticleManager {
     constructor() {
-        this.selectedSignals = new Set();
-        this.signals = [];
+        this.selectedArticles = new Set();
+        this.articles = [];
         this.currentPage = 1;
         this.pageSize = 20;
         this.totalPages = 1;
@@ -20,7 +20,17 @@ class SignalManager {
             const end = new Date();
             const start = new Date();
             start.setDate(end.getDate() - 3);
-            const format = d => d.toISOString().slice(0, 10);
+            
+            // Format for datetime-local input: YYYY-MM-DDTHH:MM (local time)
+            const format = d => {
+                const year = d.getFullYear();
+                const month = String(d.getMonth() + 1).padStart(2, '0');
+                const day = String(d.getDate()).padStart(2, '0');
+                const hours = String(d.getHours()).padStart(2, '0');
+                const minutes = String(d.getMinutes()).padStart(2, '0');
+                return `${year}-${month}-${day}T${hours}:${minutes}`;
+            };
+            
             if (!this.initialStartDate) {
                 this.initialStartDate = format(start);
             }
@@ -32,16 +42,72 @@ class SignalManager {
         this.init();
     }
 
+    // Timezone utility functions
+    getUserTimezone() {
+        return Intl.DateTimeFormat().resolvedOptions().timeZone;
+    }
+
+    getTimezoneOffset() {
+        return new Date().getTimezoneOffset(); // Returns offset in minutes
+    }
+
+    formatDateTimeForInput(date) {
+        // Format date for datetime-local input in user's timezone
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        return `${year}-${month}-${day}T${hours}:${minutes}`;
+    }
+
+    localDateTimeToUTC(localDateTimeString) {
+        // Convert datetime-local string to UTC ISO string for backend
+        if (!localDateTimeString) return null;
+        
+        // Create a Date object from the local datetime string
+        const localDate = new Date(localDateTimeString);
+        
+        // Return ISO string which is in UTC
+        return localDate.toISOString();
+    }
+
+    utcToLocalDateTime(utcISOString) {
+        // Convert UTC ISO string to local datetime-local format
+        if (!utcISOString) return '';
+        
+        const utcDate = new Date(utcISOString);
+        return this.formatDateTimeForInput(utcDate);
+    }
+
     async init() {
     this.bindEvents();
     this._ensureRiskAssessmentStyles();
+        this.displayTimezoneInfo();
         await this.loadCountries();
         await this.loadHazards();
         this.applyInitialFilters();
-        this.loadSignals();
+        this.loadArticles();
         this.loadTags();
         this.loadConfig();
         this.checkSchedulerStatus();
+    }
+
+    displayTimezoneInfo() {
+        // Display timezone information to user
+        const timezone = this.getUserTimezone();
+        const offset = this.getTimezoneOffset();
+        const offsetHours = Math.abs(offset / 60);
+        const offsetSign = offset <= 0 ? '+' : '-';
+        const offsetString = `UTC${offsetSign}${offsetHours.toString().padStart(2, '0')}:${(Math.abs(offset) % 60).toString().padStart(2, '0')}`;
+        
+        const timezoneText = `(${timezone} - ${offsetString})`;
+        
+        // Update main page timezone indicator
+        const timezoneIndicator = document.getElementById("timezoneIndicator");
+        if (timezoneIndicator) {
+            timezoneIndicator.textContent = timezoneText;
+        }
     }
 
     _ensureRiskAssessmentStyles() {
@@ -68,7 +134,7 @@ class SignalManager {
 
     bindEvents() {
         // Fetch signals button
-        document.getElementById("fetchBtn").addEventListener("click", () => this.fetchSignals());
+        document.getElementById("fetchBtn").addEventListener("click", () => this.fetchArticles());
         
         // Configuration button
         document.getElementById("configBtn").addEventListener("click", () => this.openConfigModal());
@@ -76,11 +142,9 @@ class SignalManager {
         // Scheduler toggle button
         document.getElementById("toggleSchedulerBtn").addEventListener("click", () => this.toggleScheduler());
         
-        // Filter changes
-        document.getElementById("statusFilter").addEventListener("change", () => this.resetAndLoadSignals(true));
-        document.getElementById("isSignalFilter").addEventListener("change", () => this.resetAndLoadSignals(true));
-        document.getElementById("pinnedFilter").addEventListener("change", () => this.resetAndLoadSignals(true));
-        document.getElementById("pageSizeFilter").addEventListener("change", () => this.resetAndLoadSignals());
+        // Combined filter setup
+        this.setupCombinedFilter();
+        document.getElementById("pageSizeFilter").addEventListener("change", () => this.resetAndLoadArticles());
 
         // Search input with debounce
         const searchInput = document.getElementById("searchInput");
@@ -88,7 +152,7 @@ class SignalManager {
             let searchTimeout;
             searchInput.addEventListener("input", () => {
                 clearTimeout(searchTimeout);
-                searchTimeout = setTimeout(() => this.resetAndLoadSignals(true), 500);
+                searchTimeout = setTimeout(() => this.resetAndLoadArticles(true), 500);
             });
         }
 
@@ -157,29 +221,98 @@ class SignalManager {
         });
     }
 
-    async resetAndLoadSignals(refreshCountries = false) {
+    setupCombinedFilter() {
+        const dropdown = document.getElementById("combinedFilterDropdown");
+        const options = document.getElementById("combinedFilterOptions");
+        const label = document.getElementById("combinedFilterLabel");
+        const checkboxes = document.querySelectorAll(".combined-filter-checkbox");
+        const clearAllBtn = document.getElementById("clearAllFilters");
+        const selectAllBtn = document.getElementById("selectAllFilters");
+
+        // Toggle dropdown
+        dropdown.addEventListener("click", (e) => {
+            e.stopPropagation();
+            options.classList.toggle("hidden");
+        });
+
+        // Close dropdown when clicking outside
+        document.addEventListener("click", () => {
+            options.classList.add("hidden");
+        });
+
+        // Prevent dropdown from closing when clicking inside options
+        options.addEventListener("click", (e) => {
+            e.stopPropagation();
+        });
+
+        // Handle checkbox changes
+        checkboxes.forEach(checkbox => {
+            checkbox.addEventListener("change", () => {
+                this.updateCombinedFilterLabel();
+                this.resetAndLoadArticles(true);
+            });
+        });
+
+        // Clear all filters
+        clearAllBtn.addEventListener("click", () => {
+            checkboxes.forEach(cb => cb.checked = false);
+            this.updateCombinedFilterLabel();
+            this.resetAndLoadArticles(true);
+        });
+
+        // Select all filters
+        selectAllBtn.addEventListener("click", () => {
+            checkboxes.forEach(cb => cb.checked = true);
+            this.updateCombinedFilterLabel();
+            this.resetAndLoadArticles(true);
+        });
+    }
+
+    updateCombinedFilterLabel() {
+        const checkboxes = document.querySelectorAll(".combined-filter-checkbox:checked");
+        const label = document.getElementById("combinedFilterLabel");
+        
+        if (checkboxes.length === 0) {
+            label.textContent = "All Articles";
+        } else if (checkboxes.length === 1) {
+            const value = checkboxes[0].value;
+            const labelMap = {
+                'pinned': 'Pinned',
+                'unpinned': 'Unpinned', 
+                'flagged': 'Flagged',
+                'unflagged': 'Unflagged',
+                'true_signal': 'True Signal',
+                'not_signal': 'Not Signal'
+            };
+            label.textContent = labelMap[value] || value;
+        } else {
+            label.textContent = `${checkboxes.length} filters selected`;
+        }
+    }
+
+    getCombinedFilterValues() {
+        const checkboxes = document.querySelectorAll(".combined-filter-checkbox:checked");
+        return Array.from(checkboxes).map(cb => cb.value);
+    }
+
+    async resetAndLoadArticles(refreshCountries = false) {
         this.currentPage = 1;
         if (refreshCountries) {
             await this.loadCountries();
         }
-        this.loadSignals();
+        this.loadArticles();
     }
 
     goToPage(page) {
         if (page >= 1 && page <= this.totalPages) {
             this.currentPage = page;
-            this.loadSignals();
+            this.loadArticles();
         }
     }
 
     async loadCountries() {
         try {
-            const status = document.getElementById("statusFilter").value;
-            const isSignalSelect = document.getElementById("isSignalFilter");
-            let isSignal = isSignalSelect ? isSignalSelect.value : 'all';
-            if (isSignal === 'all' && this.initialIsSignal !== 'all') {
-                isSignal = this.initialIsSignal;
-            }
+            const combinedFilters = this.getCombinedFilterValues();
             const searchInput = document.getElementById("searchInput");
             let search = searchInput ? searchInput.value.trim() : "";
             if (!search && this.initialSearch) {
@@ -192,11 +325,17 @@ class SignalManager {
             const selectedHazards = this.getSelectedHazards();
 
             const params = new URLSearchParams();
-            if (status && status !== "all") params.append("status", status);
-            if (isSignal && isSignal !== "all") params.append("is_signal", isSignal);
+            if (combinedFilters.length > 0) params.append("combined_filters", combinedFilters.join(","));
             if (search) params.append("search", search);
-            if (startDate) params.append("start_date", startDate);
-            if (endDate) params.append("end_date", endDate);
+            // Convert local datetime to UTC for backend
+            if (startDate) {
+                const utcStartDate = this.localDateTimeToUTC(startDate);
+                if (utcStartDate) params.append("start_date", utcStartDate);
+            }
+            if (endDate) {
+                const utcEndDate = this.localDateTimeToUTC(endDate);
+                if (utcEndDate) params.append("end_date", utcEndDate);
+            }
             if (selectedHazards.length > 0) params.append("hazards", selectedHazards.join(','));
 
             const response = await fetch(`/api/signals/countries?${params.toString()}`);
@@ -213,12 +352,7 @@ class SignalManager {
 
     async loadHazards() {
         try {
-            const status = document.getElementById("statusFilter").value;
-            const isSignalSelect = document.getElementById("isSignalFilter");
-            let isSignal = isSignalSelect ? isSignalSelect.value : 'all';
-            if (isSignal === 'all' && this.initialIsSignal !== 'all') {
-                isSignal = this.initialIsSignal;
-            }
+            const combinedFilters = this.getCombinedFilterValues();
             const searchInput = document.getElementById("searchInput");
             let search = searchInput ? searchInput.value.trim() : "";
             if (!search && this.initialSearch) {
@@ -231,11 +365,17 @@ class SignalManager {
             const selectedCountries = this.getSelectedCountries();
 
             const params = new URLSearchParams();
-            if (status && status !== "all") params.append("status", status);
-            if (isSignal && isSignal !== "all") params.append("is_signal", isSignal);
+            if (combinedFilters.length > 0) params.append("combined_filters", combinedFilters.join(","));
             if (search) params.append("search", search);
-            if (startDate) params.append("start_date", startDate);
-            if (endDate) params.append("end_date", endDate);
+            // Convert local datetime to UTC for backend
+            if (startDate) {
+                const utcStartDate = this.localDateTimeToUTC(startDate);
+                if (utcStartDate) params.append("start_date", utcStartDate);
+            }
+            if (endDate) {
+                const utcEndDate = this.localDateTimeToUTC(endDate);
+                if (utcEndDate) params.append("end_date", utcEndDate);
+            }
             if (selectedCountries.length > 0) params.append("countries", selectedCountries.join(','));
 
             const response = await fetch(`/api/signals/hazards?${params.toString()}`);
@@ -269,7 +409,7 @@ class SignalManager {
         // Update both filter lists to show only available options based on current selections
         await Promise.all([this.loadCountries(), this.loadHazards()]);
         // Then reload signals
-        this.resetAndLoadSignals(true);
+        this.resetAndLoadArticles(true);
     }
 
     renderCountryFilter() {
@@ -386,7 +526,6 @@ class SignalManager {
         this.initialCountries = [];
         this.initialHazards = [];
         this.initialSearch = '';
-        this.initialIsSignal = isSignalSelect ? isSignalSelect.value : 'all';
         this.initialStartDate = '';
         this.initialEndDate = '';
     }
@@ -433,11 +572,11 @@ class SignalManager {
         this.onFilterChange();
     }
 
-    async fetchSignals() {
-        this.showStatus("Fetching signals from EIOS...", true);
+    async fetchArticles() {
+        this.showStatus("Fetching articles from EIOS...", true);
         
         try {
-            const response = await fetch("/api/signals/fetch", {
+            const response = await fetch("/api/articles/fetch", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json"
@@ -447,9 +586,9 @@ class SignalManager {
             const result = await response.json();
             
             if (result.success) {
-                this.showStatus(`Successfully processed ${result.processed_count} signals (${result.true_signals_count} true signals)`, false);
+                this.showStatus(`Successfully processed ${result.processed_count} articles (${result.true_signals_count} true signals)`, false);
                 setTimeout(() => this.hideStatus(), 3000);
-                this.resetAndLoadSignals(true);
+                this.resetAndLoadArticles(true);
             } else {
                 this.showStatus(`Error: ${result.message}`, false, "error");
                 setTimeout(() => this.hideStatus(), 5000);
@@ -460,10 +599,8 @@ class SignalManager {
         }
     }
 
-    async loadSignals() {
-        const statusFilter = document.getElementById("statusFilter").value;
-        const isSignalFilter = document.getElementById("isSignalFilter").value;
-        const pinnedFilter = document.getElementById("pinnedFilter").value;
+    async loadArticles() {
+        const combinedFilters = this.getCombinedFilterValues();
         const search = document.getElementById("searchInput") ? document.getElementById("searchInput").value.trim() : "";
         
         // Get page size from selector
@@ -481,7 +618,6 @@ class SignalManager {
         
         try {
             const params = new URLSearchParams({
-                status: statusFilter,
                 page: this.currentPage,
                 page_size: this.pageSize
             });
@@ -490,8 +626,8 @@ class SignalManager {
                 params.append("search", search);
             }
             
-            if (pinnedFilter && pinnedFilter !== "all") {
-                params.append("pinned_filter", pinnedFilter);
+            if (combinedFilters.length > 0) {
+                params.append("combined_filters", combinedFilters.join(","));
             }
             
             if (selectedCountries.length > 0) {
@@ -502,12 +638,15 @@ class SignalManager {
                 params.append("hazards", selectedHazards.join(","));
             }
             
+            // Convert local datetime to UTC for backend
             if (startDate) {
-                params.append("start_date", startDate);
+                const utcStartDate = this.localDateTimeToUTC(startDate);
+                if (utcStartDate) params.append("start_date", utcStartDate);
             }
             
             if (endDate) {
-                params.append("end_date", endDate);
+                const utcEndDate = this.localDateTimeToUTC(endDate);
+                if (utcEndDate) params.append("end_date", utcEndDate);
             }
             
             const response = await fetch(`/api/signals/processed?${params}`);
@@ -515,11 +654,7 @@ class SignalManager {
             
             if (result.success) {
                 // Apply front-end filter for isSignal (Yes/No) if set
-                let signals = result.signals;
-                if (isSignalFilter && isSignalFilter !== "all") {
-                    signals = signals.filter(s => (s.is_signal || "").toLowerCase() === isSignalFilter.toLowerCase());
-                }
-                this.signals = signals;
+                this.articles = result.signals;
                 
                 // Update pagination info
                 if (result.pagination) {
@@ -530,8 +665,6 @@ class SignalManager {
                 
                 this.renderSignals();
                 this.renderPagination();
-                // After rendering, update counts in the status dropdown
-                this.loadCounts();
             } else {
                 console.error("Error loading signals:", result.message);
             }
@@ -627,33 +760,12 @@ class SignalManager {
      * Fetch counts for each status (new/flagged/discarded/all) and update option labels
      * in the status filter dropdown.
      */
-    async loadCounts() {
-        try {
-            const response = await fetch(`/api/signals/counts`);
-            const result = await response.json();
-            if (result.success) {
-                const counts = result.counts || {};
-                const statusFilter = document.getElementById("statusFilter");
-                // Iterate through options and update text
-                Array.from(statusFilter.options).forEach(opt => {
-                    const val = opt.value;
-                    if (val === "all") {
-                        opt.textContent = `All Signals${counts["all"] !== undefined ? ` (${counts["all"]})` : ""}`;
-                    } else if (["new","flagged","discarded"].includes(val)) {
-                        opt.textContent = `${val.charAt(0).toUpperCase() + val.slice(1)} Signals${counts[val] !== undefined ? ` (${counts[val]})` : ""}`;
-                    }
-                });
-            }
-        } catch (error) {
-            console.error("Error loading counts:", error);
-        }
-    }
 
     renderSignals() {
         const container = document.getElementById("signalsList");
         const emptyState = document.getElementById("emptyState");
         
-        if (this.signals.length === 0) {
+        if (this.articles.length === 0) {
             container.innerHTML = "";
             emptyState.classList.remove("hidden");
             return;
@@ -661,16 +773,16 @@ class SignalManager {
         
         emptyState.classList.add("hidden");
         
-        container.innerHTML = this.signals.map(signal => this.renderSignalCard(signal)).join("");
+        container.innerHTML = this.articles.map(signal => this.renderSignalCard(signal)).join("");
         
         // Bind checkbox events
         container.querySelectorAll(".signal-checkbox").forEach(checkbox => {
             checkbox.addEventListener("change", (e) => {
                 const signalId = parseInt(e.target.dataset.signalId);
                 if (e.target.checked) {
-                    this.selectedSignals.add(signalId);
+                    this.selectedArticles.add(signalId);
                 } else {
-                    this.selectedSignals.delete(signalId);
+                    this.selectedArticles.delete(signalId);
                 }
                 this.updateBatchButtons();
             });
@@ -692,7 +804,7 @@ class SignalManager {
         });
 
         // Click on card to toggle risk assessment (but ignore clicks on controls)
-        container.querySelectorAll('.signal-card').forEach(card => {
+        container.querySelectorAll('.article-card').forEach(card => {
             card.addEventListener('click', (e) => {
                 const tag = e.target.tagName.toLowerCase();
                 // ignore clicks on buttons, links, inputs
@@ -726,14 +838,14 @@ class SignalManager {
     const safeIsSignal = esc(isSignalVal);
     const safeJustification = esc(justificationVal).replace(/\n/g, '<br>');
     const safeHazards = esc(hazardsVal);
-        const title = signal.raw_signal ? signal.raw_signal.title : "N/A";
-        const summary = signal.raw_signal ? (signal.raw_signal.translated_abstractive_summary || signal.raw_signal.abstractive_summary) : "N/A";
+        const title = signal.raw_article ? signal.raw_article.title : "N/A";
+        const summary = signal.raw_article ? (signal.raw_article.translated_abstractive_summary || signal.raw_article.abstractive_summary) : "N/A";
         const country = signal.extracted_countries || "N/A";
         const processDate = signal.processed_at ? new Date(signal.processed_at).toLocaleDateString() : "Invalid Date";
 
         return `
-            <div class="bg-white rounded-lg shadow-sm p-6 flex items-start space-x-4 signal-card" title="${safeJustification}">
-                <input type="checkbox" class="signal-checkbox mt-1" data-signal-id="${signal.id}" ${this.selectedSignals.has(signal.id) ? "checked" : ""}>
+            <div class="bg-white rounded-lg shadow-sm p-6 flex items-start space-x-4 article-card" title="${safeJustification}">
+                <input type="checkbox" class="signal-checkbox mt-1" data-signal-id="${signal.id}" ${this.selectedArticles.has(signal.id) ? "checked" : ""}>
                 <div class="flex-1">
                     <div class="flex items-center justify-between mb-2">
                         <h2 class="text-xl font-semibold text-gray-800">${title}</h2>
@@ -773,7 +885,7 @@ class SignalManager {
     }
 
     updateBatchButtons() {
-        const hasSelection = this.selectedSignals.size > 0;
+        const hasSelection = this.selectedArticles.size > 0;
         document.getElementById("flagSelectedBtn").disabled = !hasSelection;
         document.getElementById("discardSelectedBtn").disabled = !hasSelection;
         document.getElementById("exportSelectedBtn").disabled = !hasSelection;
@@ -786,7 +898,7 @@ class SignalManager {
             });
             const result = await response.json();
             if (result.success) {
-                this.loadSignals(); // Reload to show updated status
+                this.loadArticles(); // Reload to show updated status
                 const msg = result.message || "Signal flagged"
                 this.showStatus(msg, false);
                 setTimeout(() => this.hideStatus(), 2000);
@@ -807,7 +919,7 @@ class SignalManager {
             });
             const result = await response.json();
             if (result.success) {
-                this.loadSignals(); // Reload to show updated status
+                this.loadArticles(); // Reload to show updated status
                 const msg = result.message || "Signal discarded"
                 this.showStatus(msg, false);
                 setTimeout(() => this.hideStatus(), 2000);
@@ -916,12 +1028,12 @@ class SignalManager {
     }
 
     async batchAction(action) {
-        if (this.selectedSignals.size === 0) {
+        if (this.selectedArticles.size === 0) {
             alert("Please select at least one signal.");
             return;
         }
 
-        const confirmMessage = `Are you sure you want to ${action} ${this.selectedSignals.size} selected signals?`;
+        const confirmMessage = `Are you sure you want to ${action} ${this.selectedArticles.size} selected signals?`;
         if (!confirm(confirmMessage)) {
             return;
         }
@@ -934,15 +1046,15 @@ class SignalManager {
                     "Content-Type": "application/json"
                 },
                 body: JSON.stringify({ 
-                    signal_ids: Array.from(this.selectedSignals),
+                    signal_ids: Array.from(this.selectedArticles),
                     action: action
                 })
             });
             const result = await response.json();
             if (result.success) {
-                this.selectedSignals.clear(); // Clear selection after action
+                this.selectedArticles.clear(); // Clear selection after action
                 this.updateBatchButtons();
-                this.loadSignals();
+                this.loadArticles();
                 this.showStatus(`Successfully ${action}ged ${result.updated_count} signals.`, false);
                 setTimeout(() => this.hideStatus(), 2000);
             } else {
@@ -1015,7 +1127,7 @@ class SignalManager {
             if (result.success) {
                 const counts = result.deleted_counts;
                 alert(`Cleanup completed successfully! Deleted ${counts.processed_signals} processed signals, ${counts.raw_signals} raw signals, and ${counts.processed_signal_ids} processed signal IDs.`);
-                this.loadSignals(); // Refresh the signals list
+                this.loadArticles(); // Refresh the signals list
                 this.previewCleanup(); // Refresh the preview
             } else {
                 alert(`Error executing cleanup: ${result.message}`);
@@ -1150,8 +1262,8 @@ class SignalManager {
 
     selectAllSignals() {
         // Select all signals on current page
-        this.signals.forEach(signal => {
-            this.selectedSignals.add(signal.id);
+        this.articles.forEach(signal => {
+            this.selectedArticles.add(signal.id);
         });
         
         // Update checkboxes
@@ -1164,7 +1276,7 @@ class SignalManager {
 
     unselectAllSignals() {
         // Clear all selections
-        this.selectedSignals.clear();
+        this.selectedArticles.clear();
         
         // Update checkboxes
         document.querySelectorAll(".signal-checkbox").forEach(checkbox => {
@@ -1176,9 +1288,7 @@ class SignalManager {
 
     getCurrentFilters() {
         // Get current filter state for export
-        const statusFilter = document.getElementById("statusFilter").value;
-        const isSignalFilter = document.getElementById("isSignalFilter").value;
-        const pinnedFilter = document.getElementById("pinnedFilter").value;
+        const combinedFilters = this.getCombinedFilterValues();
         const search = document.getElementById("searchInput") ? document.getElementById("searchInput").value.trim() : "";
         
         // Get country filter from checkboxes
@@ -1187,24 +1297,24 @@ class SignalManager {
         // Get hazard filter from checkboxes
         const selectedHazards = this.getSelectedHazards();
         
-        // Get date filters
+        // Get date filters and convert to UTC
         const startDate = document.getElementById("startDate").value;
         const endDate = document.getElementById("endDate").value;
+        const utcStartDate = startDate ? this.localDateTimeToUTC(startDate) : undefined;
+        const utcEndDate = endDate ? this.localDateTimeToUTC(endDate) : undefined;
         
         return {
-            status: statusFilter,
-            pinned_filter: pinnedFilter,
-            signals_only: isSignalFilter === "Yes",
+            combined_filters: combinedFilters.length > 0 ? combinedFilters.join(",") : undefined,
             search: search || undefined,
             countries: selectedCountries.length > 0 ? selectedCountries.join(",") : undefined,
             hazards: selectedHazards.length > 0 ? selectedHazards.join(",") : undefined,
-            start_date: startDate || undefined,
-            end_date: endDate || undefined
+            start_date: utcStartDate,
+            end_date: utcEndDate
         };
     }
 
     async exportSelected() {
-        if (this.selectedSignals.size === 0) {
+        if (this.selectedArticles.size === 0) {
             this.showStatus("No signals selected for export", false, "error");
             setTimeout(() => this.hideStatus(), 3000);
             return;
@@ -1219,7 +1329,7 @@ class SignalManager {
                     "Content-Type": "application/json"
                 },
                 body: JSON.stringify({
-                    signal_ids: Array.from(this.selectedSignals),
+                    signal_ids: Array.from(this.selectedArticles),
                     filters: this.getCurrentFilters()
                 })
             });
@@ -1242,7 +1352,7 @@ class SignalManager {
                 window.URL.revokeObjectURL(url);
                 document.body.removeChild(a);
                 
-                this.showStatus(`Exported ${this.selectedSignals.size} signals successfully`, false);
+                this.showStatus(`Exported ${this.selectedArticles.size} signals successfully`, false);
                 setTimeout(() => this.hideStatus(), 3000);
             } else {
                 const result = await response.json();
@@ -1303,7 +1413,7 @@ class SignalManager {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-    window.signalManager = new SignalManager();
+    window.articleManager = new ArticleManager();
 });
 
 

@@ -1,21 +1,49 @@
 from flask import Blueprint, request, jsonify, Response
-from src.models.signal import db, RawSignal, ProcessedSignal, ProcessedSignalID, UserConfig
+from src.models.signal import db, RawArticle, ProcessedArticle, ProcessedArticleID, UserConfig
 from src.services.eios_fetcher import EIOSFetcher
-from src.services.signal_processor import SignalProcessor
-from sqlalchemy import or_
+from src.services.signal_processor import ArticleProcessor
+from sqlalchemy import or_, and_
 import logging
 import csv
 import io
-from datetime import datetime
+from datetime import datetime, timedelta
 
 logger = logging.getLogger("signals_routes")
 
+def parse_datetime_filter(date_str):
+    """
+    Parse date/datetime string from frontend filters.
+    Supports multiple formats:
+    - UTC ISO format: YYYY-MM-DDTHH:MM:SS.sssZ (from frontend UTC conversion)
+    - Local datetime format: YYYY-MM-DDTHH:MM (legacy)
+    - Date-only format: YYYY-MM-DD (legacy)
+    Returns datetime object or None if invalid.
+    """
+    if not date_str:
+        return None
+    
+    try:
+        # Try UTC ISO format first (from frontend UTC conversion)
+        if date_str.endswith('Z') or '+' in date_str[-6:] or date_str.count(':') == 2:
+            # Handle ISO format with fromisoformat (Python 3.7+)
+            if date_str.endswith('Z'):
+                date_str = date_str[:-1] + '+00:00'
+            return datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+        # Try datetime-local format (YYYY-MM-DDTHH:MM)
+        elif 'T' in date_str and date_str.count(':') == 1:
+            return datetime.strptime(date_str, '%Y-%m-%dT%H:%M')
+        # Fall back to date-only format (YYYY-MM-DD)
+        else:
+            return datetime.strptime(date_str, '%Y-%m-%d')
+    except (ValueError, AttributeError):
+        return None
+
 signals_bp = Blueprint('signals', __name__)
 
-@signals_bp.route('/signals/fetch', methods=['POST'])
-def fetch_signals():
+@signals_bp.route('/articles/fetch', methods=['POST'])
+def fetch_articles():
     """
-    Trigger manual signal fetching and processing.
+    Trigger manual article fetching and processing.
     """
     try:
         # Get user-defined tags
@@ -26,39 +54,39 @@ def fetch_signals():
             # Default tags if none configured
             tags = ["ephem emro"]
         
-        logger.info(f"Fetching signals with tags: {tags}")
+        logger.info(f"Fetching articles with tags: {tags}")
         
-        # Fetch signals from EIOS
+        # Fetch articles from EIOS
         fetcher = EIOSFetcher()
-        articles = fetcher.fetch_signals(tags)
+        articles = fetcher.fetch_articles(tags)
         
         if not articles:
             return jsonify({
                 'success': True,
-                'message': 'No new signals found',
+                'message': 'No new articles found',
                 'processed_count': 0,
-                'true_signals_count': 0
+                'true_articles_count': 0
             })
         
-        # Process ALL signals (no hard cap)
-        processor = SignalProcessor()
-        processed_signals = processor.process_signals_batch(articles, batch_size=None)
+        # Process ALL articles (no hard cap)
+        processor = ArticleProcessor()
+        processed_articles = processor.process_articles_batch(articles, batch_size=None)
         
         # Count true signals (is_signal = 'Yes')
-        true_signals_count = sum(1 for signal in processed_signals if signal.is_signal == 'Yes')
+        true_signals_count = sum(1 for article in processed_articles if article.is_signal == 'Yes')
         
         return jsonify({
             'success': True,
-            'message': f'Successfully processed {len(processed_signals)} signals',
-            'processed_count': len(processed_signals),
+            'message': f'Successfully processed {len(processed_articles)} articles',
+            'processed_count': len(processed_articles),
             'true_signals_count': true_signals_count
         })
         
     except Exception as e:
-        logger.error(f"Error fetching signals: {e}")
+        logger.error(f"Error fetching articles: {e}")
         return jsonify({
             'success': False,
-            'message': f'Error fetching signals: {str(e)}'
+            'message': f'Error fetching articles: {str(e)}'
         }), 500
 
 @signals_bp.route('/signals/processed', methods=['GET'])
@@ -70,18 +98,20 @@ def get_processed_signals():
         status: one of 'all', 'new', 'flagged', 'discarded' (default 'all')
         signals_only: boolean flag to include only true signals (is_signal == 'Yes')
         pinned_filter: one of 'all', 'pinned', 'unpinned' (default 'all')
+        combined_filters: comma-separated list of filters: 'pinned', 'unpinned', 'flagged', 'unflagged', 'true_signal', 'not_signal'
         search: optional free text to search across raw and processed signal fields
         page: page number for pagination (default 1)
         page_size: number of records per page (default 20)
         countries: comma-separated list of countries to filter by
-        start_date: start date for process date filtering (YYYY-MM-DD format)
-        end_date: end date for process date filtering (YYYY-MM-DD format)
+        start_date: start date for process date filtering (YYYY-MM-DD or YYYY-MM-DDTHH:MM format)
+        end_date: end date for process date filtering (YYYY-MM-DD or YYYY-MM-DDTHH:MM format)
     """
     try:
         # Get query parameters
         status_filter = request.args.get('status', 'all')  # 'all', 'new', 'flagged', 'discarded'
         signals_only = request.args.get('signals_only', 'false').lower() == 'true'
         pinned_filter = request.args.get('pinned_filter', 'all')  # 'all', 'pinned', 'unpinned'
+        combined_filters = request.args.get('combined_filters', None)  # comma-separated filter list
         search_term = request.args.get('search', None)
         
         # Pagination parameters
@@ -95,21 +125,43 @@ def get_processed_signals():
         end_date = request.args.get('end_date', None)
 
         # Build query
-        query = ProcessedSignal.query
+        query = ProcessedArticle.query
 
         # Include only true signals if requested
         if signals_only:
-            query = query.filter(ProcessedSignal.is_signal == 'Yes')
+            query = query.filter(ProcessedArticle.is_signal == 'Yes')
 
         # Filter by status if not 'all'
         if status_filter != 'all':
-            query = query.filter(ProcessedSignal.status == status_filter)
+            query = query.filter(ProcessedArticle.status == status_filter)
 
         # Filter by pinned status if not 'all'
         if pinned_filter == 'pinned':
-            query = query.filter(ProcessedSignal.is_pinned == True)
+            query = query.filter(ProcessedArticle.is_pinned == True)
         elif pinned_filter == 'unpinned':
-            query = query.filter(ProcessedSignal.is_pinned == False)
+            query = query.filter(ProcessedArticle.is_pinned == False)
+
+        # Handle combined filters (takes precedence over individual filters if provided)
+        if combined_filters:
+            filter_list = [f.strip().lower() for f in combined_filters.split(',') if f.strip()]
+            filter_conditions = []
+            
+            for filter_item in filter_list:
+                if filter_item == 'pinned':
+                    filter_conditions.append(ProcessedArticle.is_pinned == True)
+                elif filter_item == 'unpinned':
+                    filter_conditions.append(ProcessedArticle.is_pinned == False)
+                elif filter_item == 'flagged':
+                    filter_conditions.append(ProcessedArticle.status == 'flagged')
+                elif filter_item == 'unflagged':
+                    filter_conditions.append(ProcessedArticle.status.in_(['new', 'discarded']))
+                elif filter_item == 'true_signal':
+                    filter_conditions.append(ProcessedArticle.is_signal == 'Yes')
+                elif filter_item == 'not_signal':
+                    filter_conditions.append(ProcessedArticle.is_signal == 'No')
+            
+            if filter_conditions:
+                query = query.filter(and_(*filter_conditions))
 
         # Filter by countries if provided
         if countries_filter:
@@ -117,7 +169,7 @@ def get_processed_signals():
             if countries_list:
                 country_conditions = []
                 for country in countries_list:
-                    country_conditions.append(ProcessedSignal.extracted_countries.ilike(f'%{country}%'))
+                    country_conditions.append(ProcessedArticle.extracted_countries.ilike(f'%{country}%'))
                 query = query.filter(or_(*country_conditions))
 
         # Filter by hazards if provided
@@ -126,45 +178,40 @@ def get_processed_signals():
             if hazards_list:
                 hazard_conditions = []
                 for hazard in hazards_list:
-                    hazard_conditions.append(ProcessedSignal.extracted_hazards.ilike(f'%{hazard}%'))
+                    hazard_conditions.append(ProcessedArticle.extracted_hazards.ilike(f'%{hazard}%'))
                 query = query.filter(or_(*hazard_conditions))
 
         # Filter by date range if provided
         if start_date:
-            from datetime import datetime
-            try:
-                start_dt = datetime.strptime(start_date, '%Y-%m-%d')
-                query = query.filter(ProcessedSignal.processed_at >= start_dt)
-            except ValueError:
-                pass  # Invalid date format, ignore
+            start_dt = parse_datetime_filter(start_date)
+            if start_dt:
+                query = query.filter(ProcessedArticle.processed_at >= start_dt)
                 
         if end_date:
-            from datetime import datetime
-            try:
-                end_dt = datetime.strptime(end_date, '%Y-%m-%d')
-                # Add one day to include the entire end date
-                from datetime import timedelta
-                end_dt = end_dt + timedelta(days=1)
-                query = query.filter(ProcessedSignal.processed_at < end_dt)
-            except ValueError:
-                pass  # Invalid date format, ignore
+            end_dt = parse_datetime_filter(end_date)
+            if end_dt:
+                # If it's a date-only filter, add one day to include the entire end date
+                # If it's a datetime filter, use as-is for precise hourly filtering
+                if 'T' not in end_date:
+                    end_dt = end_dt + timedelta(days=1)
+                query = query.filter(ProcessedArticle.processed_at < end_dt)
 
-        # Apply search across multiple fields if a search term is provided. Join with RawSignal to
+        # Apply search across multiple fields if a search term is provided. Join with RawArticle to
         # search titles and summaries. Using ilike for case-insensitive partial matching.
         if search_term:
             # Escape percent signs in search term if present
             escaped = search_term.replace('%', '\\%').replace('_', '\\_')
             pattern = f"%{escaped}%"
-            query = query.join(RawSignal, ProcessedSignal.raw_signal).filter(
+            query = query.join(RawArticle, ProcessedArticle.raw_article).filter(
                 or_(
-                    RawSignal.original_title.ilike(pattern),
-                    RawSignal.title.ilike(pattern),
-                    RawSignal.translated_description.ilike(pattern),
-                    RawSignal.translated_abstractive_summary.ilike(pattern),
-                    RawSignal.abstractive_summary.ilike(pattern),
-                    ProcessedSignal.extracted_countries.ilike(pattern),
-                    ProcessedSignal.extracted_hazards.ilike(pattern),
-                    ProcessedSignal.risk_signal_assessment.ilike(pattern)
+                    RawArticle.original_title.ilike(pattern),
+                    RawArticle.title.ilike(pattern),
+                    RawArticle.translated_description.ilike(pattern),
+                    RawArticle.translated_abstractive_summary.ilike(pattern),
+                    RawArticle.abstractive_summary.ilike(pattern),
+                    ProcessedArticle.extracted_countries.ilike(pattern),
+                    ProcessedArticle.extracted_hazards.ilike(pattern),
+                    ProcessedArticle.risk_signal_assessment.ilike(pattern)
                 )
             )
 
@@ -175,7 +222,7 @@ def get_processed_signals():
         total_pages = (total_count + page_size - 1) // page_size
 
         # Order by processed_at descending and apply pagination
-        signals = query.order_by(ProcessedSignal.processed_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
+        signals = query.order_by(ProcessedArticle.processed_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
 
         return jsonify({
             'success': True,
@@ -348,7 +395,7 @@ def flag_signal(signal_id):
     Flag a specific signal.
     """
     try:
-        signal = ProcessedSignal.query.get_or_404(signal_id)
+        signal = ProcessedArticle.query.get_or_404(signal_id)
         signal.status = 'flagged'
         db.session.commit()
         
@@ -370,7 +417,7 @@ def discard_signal(signal_id):
     Discard a specific signal.
     """
     try:
-        signal = ProcessedSignal.query.get_or_404(signal_id)
+        signal = ProcessedArticle.query.get_or_404(signal_id)
         signal.status = 'discarded'
         db.session.commit()
         
@@ -393,7 +440,7 @@ def discard_non_flagged_signals():
     """
     try:
         # Update all 'new' signals to 'discarded'
-        updated_count = ProcessedSignal.query.filter_by(status='new').update({'status': 'discarded'})
+        updated_count = ProcessedArticle.query.filter_by(status='new').update({'status': 'discarded'})
         db.session.commit()
         
         return jsonify({
@@ -432,7 +479,7 @@ def batch_action_signals():
         
         # Update signals
         status = 'flagged' if action == 'flag' else 'discarded'
-        updated_count = ProcessedSignal.query.filter(ProcessedSignal.id.in_(signal_ids)).update(
+        updated_count = ProcessedArticle.query.filter(ProcessedArticle.id.in_(signal_ids)).update(
             {'status': status}, synchronize_session=False)
         db.session.commit()
         
@@ -471,14 +518,14 @@ def get_signal_counts():
     """
     try:
         signals_only = request.args.get('signals_only', 'false').lower() == 'true'
-        base_query = ProcessedSignal.query
+        base_query = ProcessedArticle.query
         if signals_only:
-            base_query = base_query.filter(ProcessedSignal.is_signal == 'Yes')
+            base_query = base_query.filter(ProcessedArticle.is_signal == 'Yes')
         counts = {}
         # Total count
         counts['all'] = base_query.count()
         for status in ['new', 'flagged', 'discarded']:
-            counts[status] = base_query.filter(ProcessedSignal.status == status).count()
+            counts[status] = base_query.filter(ProcessedArticle.status == status).count()
         return jsonify({'success': True, 'counts': counts})
     except Exception as e:
         logger.error(f"Error retrieving signal counts: {e}")
@@ -521,31 +568,26 @@ def get_signal_stats():
         is_signal_filter = request.args.get('is_signal', 'all')
 
         # Base query for processed signals
-        query = ProcessedSignal.query
+        query = ProcessedArticle.query
         
         # Apply date filtering if provided
         if start_date:
-            from datetime import datetime
-            try:
-                start_dt = datetime.strptime(start_date, '%Y-%m-%d')
-                query = query.filter(ProcessedSignal.processed_at >= start_dt)
-            except ValueError:
-                pass  # Invalid date format, ignore
+            start_dt = parse_datetime_filter(start_date)
+            if start_dt:
+                query = query.filter(ProcessedArticle.processed_at >= start_dt)
                 
         if end_date:
-            from datetime import datetime
-            try:
-                end_dt = datetime.strptime(end_date, '%Y-%m-%d')
-                # Add one day to include the entire end date
-                from datetime import timedelta
-                end_dt = end_dt + timedelta(days=1)
-                query = query.filter(ProcessedSignal.processed_at < end_dt)
-            except ValueError:
-                pass  # Invalid date format, ignore
+            end_dt = parse_datetime_filter(end_date)
+            if end_dt:
+                # If it's a date-only filter, add one day to include the entire end date
+                # If it's a datetime filter, use as-is for precise hourly filtering
+                if 'T' not in end_date:
+                    end_dt = end_dt + timedelta(days=1)
+                query = query.filter(ProcessedArticle.processed_at < end_dt)
 
         # Filter by signal flag if requested
         if is_signal_filter in ['Yes', 'No']:
-            query = query.filter(ProcessedSignal.is_signal == is_signal_filter)
+            query = query.filter(ProcessedArticle.is_signal == is_signal_filter)
 
         signals = query.all()
 
@@ -612,29 +654,25 @@ def get_countries():
         is_signal = request.args.get('is_signal', 'all')
         hazards_filter = request.args.get('hazards', None)
 
-        query = ProcessedSignal.query
+        query = ProcessedArticle.query
 
         if is_signal in ('Yes', 'No'):
-            query = query.filter(ProcessedSignal.is_signal == is_signal)
+            query = query.filter(ProcessedArticle.is_signal == is_signal)
 
         if status_filter != 'all':
-            query = query.filter(ProcessedSignal.status == status_filter)
+            query = query.filter(ProcessedArticle.status == status_filter)
 
         if start_date:
-            from datetime import datetime
-            try:
-                start_dt = datetime.strptime(start_date, '%Y-%m-%d')
-                query = query.filter(ProcessedSignal.processed_at >= start_dt)
-            except ValueError:
-                pass
+            start_dt = parse_datetime_filter(start_date)
+            if start_dt:
+                query = query.filter(ProcessedArticle.processed_at >= start_dt)
 
         if end_date:
-            from datetime import datetime, timedelta
-            try:
-                end_dt = datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
-                query = query.filter(ProcessedSignal.processed_at < end_dt)
-            except ValueError:
-                pass
+            end_dt = parse_datetime_filter(end_date)
+            if end_dt:
+                if 'T' not in end_date:
+                    end_dt = end_dt + timedelta(days=1)
+                query = query.filter(ProcessedArticle.processed_at < end_dt)
 
         # Filter by hazards if provided
         if hazards_filter:
@@ -642,26 +680,26 @@ def get_countries():
             if hazards_list:
                 hazard_conditions = []
                 for hazard in hazards_list:
-                    hazard_conditions.append(ProcessedSignal.extracted_hazards.ilike(f'%{hazard}%'))
+                    hazard_conditions.append(ProcessedArticle.extracted_hazards.ilike(f'%{hazard}%'))
                 query = query.filter(or_(*hazard_conditions))
 
         if search_term:
             escaped = search_term.replace('%', '\\%').replace('_', '\\_')
             pattern = f"%{escaped}%"
-            query = query.join(RawSignal, ProcessedSignal.raw_signal).filter(
+            query = query.join(RawArticle, ProcessedArticle.raw_article).filter(
                 or_(
-                    RawSignal.original_title.ilike(pattern),
-                    RawSignal.title.ilike(pattern),
-                    RawSignal.translated_description.ilike(pattern),
-                    RawSignal.translated_abstractive_summary.ilike(pattern),
-                    RawSignal.abstractive_summary.ilike(pattern),
-                    ProcessedSignal.extracted_countries.ilike(pattern),
-                    ProcessedSignal.extracted_hazards.ilike(pattern),
-                    ProcessedSignal.risk_signal_assessment.ilike(pattern)
+                    RawArticle.original_title.ilike(pattern),
+                    RawArticle.title.ilike(pattern),
+                    RawArticle.translated_description.ilike(pattern),
+                    RawArticle.translated_abstractive_summary.ilike(pattern),
+                    RawArticle.abstractive_summary.ilike(pattern),
+                    ProcessedArticle.extracted_countries.ilike(pattern),
+                    ProcessedArticle.extracted_hazards.ilike(pattern),
+                    ProcessedArticle.risk_signal_assessment.ilike(pattern)
                 )
             )
 
-        signals = query.filter(ProcessedSignal.extracted_countries.isnot(None)).all()
+        signals = query.filter(ProcessedArticle.extracted_countries.isnot(None)).all()
 
         countries_set = set()
         for signal in signals:
@@ -690,29 +728,25 @@ def get_hazards():
         is_signal = request.args.get('is_signal', 'all')
         countries_filter = request.args.get('countries', None)
 
-        query = ProcessedSignal.query
+        query = ProcessedArticle.query
 
         if is_signal in ('Yes', 'No'):
-            query = query.filter(ProcessedSignal.is_signal == is_signal)
+            query = query.filter(ProcessedArticle.is_signal == is_signal)
 
         if status_filter != 'all':
-            query = query.filter(ProcessedSignal.status == status_filter)
+            query = query.filter(ProcessedArticle.status == status_filter)
 
         if start_date:
-            from datetime import datetime
-            try:
-                start_dt = datetime.strptime(start_date, '%Y-%m-%d')
-                query = query.filter(ProcessedSignal.processed_at >= start_dt)
-            except ValueError:
-                pass
+            start_dt = parse_datetime_filter(start_date)
+            if start_dt:
+                query = query.filter(ProcessedArticle.processed_at >= start_dt)
 
         if end_date:
-            from datetime import datetime, timedelta
-            try:
-                end_dt = datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
-                query = query.filter(ProcessedSignal.processed_at < end_dt)
-            except ValueError:
-                pass
+            end_dt = parse_datetime_filter(end_date)
+            if end_dt:
+                if 'T' not in end_date:
+                    end_dt = end_dt + timedelta(days=1)
+                query = query.filter(ProcessedArticle.processed_at < end_dt)
 
         # Filter by countries if provided
         if countries_filter:
@@ -720,26 +754,26 @@ def get_hazards():
             if countries_list:
                 country_conditions = []
                 for country in countries_list:
-                    country_conditions.append(ProcessedSignal.extracted_countries.ilike(f'%{country}%'))
+                    country_conditions.append(ProcessedArticle.extracted_countries.ilike(f'%{country}%'))
                 query = query.filter(or_(*country_conditions))
 
         if search_term:
             escaped = search_term.replace('%', '\\%').replace('_', '\\_')
             pattern = f"%{escaped}%"
-            query = query.join(RawSignal, ProcessedSignal.raw_signal).filter(
+            query = query.join(RawArticle, ProcessedArticle.raw_article).filter(
                 or_(
-                    RawSignal.original_title.ilike(pattern),
-                    RawSignal.title.ilike(pattern),
-                    RawSignal.translated_description.ilike(pattern),
-                    RawSignal.translated_abstractive_summary.ilike(pattern),
-                    RawSignal.abstractive_summary.ilike(pattern),
-                    ProcessedSignal.extracted_countries.ilike(pattern),
-                    ProcessedSignal.extracted_hazards.ilike(pattern),
-                    ProcessedSignal.risk_signal_assessment.ilike(pattern)
+                    RawArticle.original_title.ilike(pattern),
+                    RawArticle.title.ilike(pattern),
+                    RawArticle.translated_description.ilike(pattern),
+                    RawArticle.translated_abstractive_summary.ilike(pattern),
+                    RawArticle.abstractive_summary.ilike(pattern),
+                    ProcessedArticle.extracted_countries.ilike(pattern),
+                    ProcessedArticle.extracted_hazards.ilike(pattern),
+                    ProcessedArticle.risk_signal_assessment.ilike(pattern)
                 )
             )
 
-        signals = query.filter(ProcessedSignal.extracted_hazards.isnot(None)).all()
+        signals = query.filter(ProcessedArticle.extracted_hazards.isnot(None)).all()
 
         hazards_set = set()
         for signal in signals:
@@ -792,22 +826,22 @@ def cleanup_old_signals():
             }), 400
         
         # Count signals to be deleted
-        signals_to_delete = ProcessedSignal.query.filter(ProcessedSignal.processed_at < cutoff_dt).all()
+        signals_to_delete = ProcessedArticle.query.filter(ProcessedArticle.processed_at < cutoff_dt).all()
         signal_ids = [s.id for s in signals_to_delete]
         
         # Get associated raw signal IDs
-        raw_signal_ids = [s.raw_signal_id for s in signals_to_delete if s.raw_signal_id]
+        raw_article_ids = [s.raw_article_id for s in signals_to_delete if s.raw_article_id]
         
         # Delete processed signals
-        deleted_processed = ProcessedSignal.query.filter(ProcessedSignal.processed_at < cutoff_dt).delete()
+        deleted_processed = ProcessedArticle.query.filter(ProcessedArticle.processed_at < cutoff_dt).delete()
         
         # Delete associated raw signals
         deleted_raw = 0
-        if raw_signal_ids:
-            deleted_raw = RawSignal.query.filter(RawSignal.id.in_(raw_signal_ids)).delete(synchronize_session=False)
+        if raw_article_ids:
+            deleted_raw = RawArticle.query.filter(RawArticle.id.in_(raw_article_ids)).delete(synchronize_session=False)
         
         # Delete processed signal IDs
-        deleted_ids = ProcessedSignalID.query.filter(ProcessedSignalID.processed_at < cutoff_dt).delete()
+        deleted_ids = ProcessedArticleID.query.filter(ProcessedArticleID.processed_at < cutoff_dt).delete()
         
         db.session.commit()
         
@@ -857,15 +891,15 @@ def preview_cleanup():
             }), 400
         
         # Count signals that would be deleted
-        processed_count = ProcessedSignal.query.filter(ProcessedSignal.processed_at < cutoff_dt).count()
+        processed_count = ProcessedArticle.query.filter(ProcessedArticle.processed_at < cutoff_dt).count()
         
         # Count raw signals that would be deleted
-        signals_to_delete = ProcessedSignal.query.filter(ProcessedSignal.processed_at < cutoff_dt).all()
-        raw_signal_ids = [s.raw_signal_id for s in signals_to_delete if s.raw_signal_id]
-        raw_count = len(raw_signal_ids)
+        signals_to_delete = ProcessedArticle.query.filter(ProcessedArticle.processed_at < cutoff_dt).all()
+        raw_article_ids = [s.raw_article_id for s in signals_to_delete if s.raw_article_id]
+        raw_count = len(raw_article_ids)
         
         # Count processed signal IDs that would be deleted
-        ids_count = ProcessedSignalID.query.filter(ProcessedSignalID.processed_at < cutoff_dt).count()
+        ids_count = ProcessedArticleID.query.filter(ProcessedArticleID.processed_at < cutoff_dt).count()
         
         return jsonify({
             'success': True,
@@ -914,7 +948,7 @@ def export_signals_csv():
         # Build query based on filters or specific IDs
         if signal_ids == "all":
             # Apply filters to get all matching signals
-            query = ProcessedSignal.query
+            query = ProcessedArticle.query
             
             status_filter = filters.get('status', 'all')
             pinned_filter = filters.get('pinned_filter', 'all')
@@ -927,22 +961,22 @@ def export_signals_csv():
             
             # Apply filters (same logic as get_processed_signals)
             if signals_only:
-                query = query.filter(ProcessedSignal.is_signal == 'Yes')
+                query = query.filter(ProcessedArticle.is_signal == 'Yes')
             
             if status_filter != 'all':
-                query = query.filter(ProcessedSignal.status == status_filter)
+                query = query.filter(ProcessedArticle.status == status_filter)
             
             if pinned_filter == 'pinned':
-                query = query.filter(ProcessedSignal.is_pinned == True)
+                query = query.filter(ProcessedArticle.is_pinned == True)
             elif pinned_filter == 'unpinned':
-                query = query.filter(ProcessedSignal.is_pinned == False)
+                query = query.filter(ProcessedArticle.is_pinned == False)
             
             if countries_filter:
                 countries_list = [c.strip() for c in countries_filter.split(',') if c.strip()]
                 if countries_list:
                     country_conditions = []
                     for country in countries_list:
-                        country_conditions.append(ProcessedSignal.extracted_countries.ilike(f'%{country}%'))
+                        country_conditions.append(ProcessedArticle.extracted_countries.ilike(f'%{country}%'))
                     query = query.filter(or_(*country_conditions))
             
             if hazards_filter:
@@ -950,44 +984,40 @@ def export_signals_csv():
                 if hazards_list:
                     hazard_conditions = []
                     for hazard in hazards_list:
-                        hazard_conditions.append(ProcessedSignal.extracted_hazards.ilike(f'%{hazard}%'))
+                        hazard_conditions.append(ProcessedArticle.extracted_hazards.ilike(f'%{hazard}%'))
                     query = query.filter(or_(*hazard_conditions))
             
             if start_date:
-                try:
-                    start_dt = datetime.strptime(start_date, '%Y-%m-%d')
-                    query = query.filter(ProcessedSignal.processed_at >= start_dt)
-                except ValueError:
-                    pass
+                start_dt = parse_datetime_filter(start_date)
+                if start_dt:
+                    query = query.filter(ProcessedArticle.processed_at >= start_dt)
             
             if end_date:
-                try:
-                    end_dt = datetime.strptime(end_date, '%Y-%m-%d')
-                    from datetime import timedelta
-                    end_dt = end_dt + timedelta(days=1)
-                    query = query.filter(ProcessedSignal.processed_at < end_dt)
-                except ValueError:
-                    pass
+                end_dt = parse_datetime_filter(end_date)
+                if end_dt:
+                    if 'T' not in end_date:
+                        end_dt = end_dt + timedelta(days=1)
+                    query = query.filter(ProcessedArticle.processed_at < end_dt)
             
             if search_term:
                 escaped = search_term.replace('%', '\\%').replace('_', '\\_')
                 pattern = f"%{escaped}%"
-                query = query.join(RawSignal, ProcessedSignal.raw_signal).filter(
+                query = query.join(RawArticle, ProcessedArticle.raw_article).filter(
                     or_(
-                        RawSignal.original_title.ilike(pattern),
-                        RawSignal.title.ilike(pattern),
-                        RawSignal.translated_description.ilike(pattern),
-                        RawSignal.translated_abstractive_summary.ilike(pattern),
-                        RawSignal.abstractive_summary.ilike(pattern),
-                        ProcessedSignal.extracted_countries.ilike(pattern),
-                        ProcessedSignal.extracted_hazards.ilike(pattern)
+                        RawArticle.original_title.ilike(pattern),
+                        RawArticle.title.ilike(pattern),
+                        RawArticle.translated_description.ilike(pattern),
+                        RawArticle.translated_abstractive_summary.ilike(pattern),
+                        RawArticle.abstractive_summary.ilike(pattern),
+                        ProcessedArticle.extracted_countries.ilike(pattern),
+                        ProcessedArticle.extracted_hazards.ilike(pattern)
                     )
                 )
             
-            signals = query.order_by(ProcessedSignal.processed_at.desc()).all()
+            signals = query.order_by(ProcessedArticle.processed_at.desc()).all()
         else:
             # Get specific signals by IDs
-            signals = ProcessedSignal.query.filter(ProcessedSignal.id.in_(signal_ids)).all()
+            signals = ProcessedArticle.query.filter(ProcessedArticle.id.in_(signal_ids)).all()
         
         if not signals:
             return jsonify({
@@ -1010,17 +1040,17 @@ def export_signals_csv():
         
         # Write data rows
         for signal in signals:
-            raw_signal = signal.raw_signal
+            raw_article = signal.raw_article
             eios_url = f"https://portal.who.int/eios/#/items/{signal.rss_item_id}/title/full-article"
             
             row = [
                 signal.id,
                 signal.rss_item_id,
-                raw_signal.title if raw_signal else '',
-                raw_signal.original_title if raw_signal else '',
-                raw_signal.translated_description if raw_signal else '',
-                raw_signal.translated_abstractive_summary if raw_signal else '',
-                raw_signal.abstractive_summary if raw_signal else '',
+                raw_article.title if raw_article else '',
+                raw_article.original_title if raw_article else '',
+                raw_article.translated_description if raw_article else '',
+                raw_article.translated_abstractive_summary if raw_article else '',
+                raw_article.abstractive_summary if raw_article else '',
                 signal.extracted_countries or '',
                 signal.is_signal or '',
                 signal.get_justification(),
@@ -1031,7 +1061,7 @@ def export_signals_csv():
                 signal.status,
                 'Yes' if signal.is_pinned else 'No',
                 signal.processed_at.strftime('%Y-%m-%d %H:%M:%S') if signal.processed_at else '',
-                raw_signal.created_at.strftime('%Y-%m-%d %H:%M:%S') if raw_signal and raw_signal.created_at else '',
+                raw_article.created_at.strftime('%Y-%m-%d %H:%M:%S') if raw_article and raw_article.created_at else '',
                 eios_url
             ]
             writer.writerow(row)

@@ -333,7 +333,7 @@ class EIOSFetcher:
         logger.info("Note: EIOS v2 API focuses on pinned articles. Unpinned articles not available through this endpoint.")
         return []
 
-    def fetch_signals(self, tags: List[str]) -> List[Dict[str, Any]]:
+    def fetch_articles(self, tags: List[str]) -> List[Dict[str, Any]]:
         """
         Fetch signals from EIOS based on provided tags.
         

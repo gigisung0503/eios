@@ -12,7 +12,7 @@ from flask import Flask, send_from_directory
 from flask_cors import CORS
 from src.models.db import db
 from src.models.user import User
-from src.models.signal import RawSignal, ProcessedSignal, UserConfig, ProcessedSignalID
+from src.models.signal import RawArticle, ProcessedArticle, UserConfig, ProcessedArticleID
 from src.routes.user import user_bp
 from src.routes.signals import signals_bp
 from src.routes.scheduler import scheduler_bp
