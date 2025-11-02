@@ -1,20 +1,20 @@
-# EIOS Signal Management Application
+# EIOS Article Management Application
 
-A streamlined application to read and process EIOS signals, evaluate them for validity, extract country and hazard information, and provide a user interface for managing signal flags and discards.
+A streamlined application to read and process EIOS articles, evaluate them for validity as signals, extract country and hazard information, and provide a user interface for managing article flags and discards.
 
 > **📋 Development Log**: For detailed information about recent enhancements including pinned articles support and CSV export functionality, see [logging.md](logging.md).
 
 ## Features
 
-- **Signal Fetching**: Automatically fetch both pinned and unpinned signals from EIOS using configurable tags
-- **AI-Powered Evaluation**: Use OpenAI GPT-4 to evaluate signals using risk scoring system
+- **Article Fetching**: Automatically fetch both pinned and unpinned articles from EIOS using configurable tags
+- **AI-Powered Evaluation**: Use OpenAI GPT-4 to evaluate articles for signal validity using risk scoring system
 - **Country & Hazard Extraction**: Extract affected countries and hazard types using Sendai Framework
-- **Batch Processing**: Process signals in batches to manage API costs
-- **User Interface**: Web-based interface for managing signals with comprehensive filtering
+- **Batch Processing**: Process articles in batches to manage API costs
+- **User Interface**: Web-based interface for managing articles with comprehensive filtering
 - **Scheduling**: Hourly automatic fetching with manual trigger option
-- **Persistence**: Avoid reprocessing already processed signals
-- **Signal Management**: Flag, discard, and filter signals with pinned status support
-- **CSV Export**: Export selected or all signals to CSV with comprehensive data fields
+- **Persistence**: Avoid reprocessing already processed articles
+- **Article Management**: Flag, discard, and filter articles with pinned status support
+- **CSV Export**: Export selected or all articles to CSV with comprehensive data fields
 - **Enhanced Filtering**: Filter by status, signal type, pinned status, countries, and date ranges
 
 ## Installation

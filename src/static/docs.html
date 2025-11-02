@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Documentation - EIOS Article Management</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .doc-section {
+            scroll-margin-top: 100px;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- Header -->
+    <header class="bg-white shadow-sm border-b">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center py-4">
+                <div class="flex items-center">
+                    <i class="fas fa-book text-indigo-600 text-2xl mr-3"></i>
+                    <h1 class="text-2xl font-bold text-gray-900">Documentation</h1>
+                </div>
+                <div class="flex space-x-2">
+                    <a href="index.html" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors">
+                        <i class="fas fa-list"></i>
+                        <span>Articles</span>
+                    </a>
+                    <a href="dashboard.html" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors">
+                        <i class="fas fa-chart-pie"></i>
+                        <span>Dashboard</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Navigation -->
+        <div class="bg-white rounded-lg shadow-sm p-6 mb-6">
+            <h2 class="text-lg font-medium text-gray-900 mb-4">Table of Contents</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <a href="#overview" class="text-blue-600 hover:text-blue-800 flex items-center space-x-2">
+                    <i class="fas fa-info-circle"></i>
+                    <span>Application Overview</span>
+                </a>
+                <a href="#features" class="text-blue-600 hover:text-blue-800 flex items-center space-x-2">
+                    <i class="fas fa-star"></i>
+                    <span>Key Features</span>
+                </a>
+                <a href="#workflow" class="text-blue-600 hover:text-blue-800 flex items-center space-x-2">
+                    <i class="fas fa-flow-chart"></i>
+                    <span>Workflow</span>
+                </a>
+                <a href="#filtering" class="text-blue-600 hover:text-blue-800 flex items-center space-x-2">
+                    <i class="fas fa-filter"></i>
+                    <span>Filtering & Search</span>
+                </a>
+                <a href="#actions" class="text-blue-600 hover:text-blue-800 flex items-center space-x-2">
+                    <i class="fas fa-tools"></i>
+                    <span>Article Actions</span>
+                </a>
+                <a href="#configuration" class="text-blue-600 hover:text-blue-800 flex items-center space-x-2">
+                    <i class="fas fa-cog"></i>
+                    <span>Configuration</span>
+                </a>
+            </div>
+        </div>
+
+        <!-- Application Overview -->
+        <section id="overview" class="bg-white rounded-lg shadow-sm p-6 mb-6 doc-section">
+            <h2 class="text-2xl font-bold text-gray-900 mb-4">
+                <i class="fas fa-info-circle text-indigo-600 mr-2"></i>
+                Application Overview
+            </h2>
+            <div class="prose max-w-none">
+                <p class="text-lg text-gray-700 mb-4">
+                    The EIOS Article Management Application is a comprehensive system for monitoring, analyzing, and managing health emergency intelligence from the WHO's EIOS (Epidemic Intelligence from Open Sources) platform.
+                </p>
+                
+                <h3 class="text-xl font-semibold text-gray-800 mt-6 mb-3">What it does:</h3>
+                <ul class="space-y-2 text-gray-700">
+                    <li><strong>Fetches Articles:</strong> Automatically retrieves articles from the EIOS API based on configured tags and criteria</li>
+                    <li><strong>AI Analysis:</strong> Uses advanced AI models (OpenAI GPT-4, DeepSeek, or local LLMs) to assess each article for emergency signals</li>
+                    <li><strong>Risk Assessment:</strong> Evaluates articles for potential acute risks to human health and categorizes threats</li>
+                    <li><strong>Classification:</strong> Automatically identifies countries, hazards, and risk levels from article content</li>
+                    <li><strong>Management Interface:</strong> Provides intuitive tools for reviewing, filtering, flagging, and exporting articles</li>
+                </ul>
+
+                <h3 class="text-xl font-semibold text-gray-800 mt-6 mb-3">Key Benefits:</h3>
+                <ul class="space-y-2 text-gray-700">
+                    <li><strong>Automated Monitoring:</strong> Continuous background processing of new articles</li>
+                    <li><strong>Intelligent Filtering:</strong> AI-powered identification of true emergency signals vs. routine news</li>
+                    <li><strong>Global Coverage:</strong> Monitors health threats across all countries and regions</li>
+                    <li><strong>Flexible Export:</strong> CSV export capabilities for further analysis and reporting</li>
+                    <li><strong>Multi-timezone Support:</strong> Handles datetime filtering across different timezones</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- Key Features -->
+        <section id="features" class="bg-white rounded-lg shadow-sm p-6 mb-6 doc-section">
+            <h2 class="text-2xl font-bold text-gray-900 mb-4">
+                <i class="fas fa-star text-indigo-600 mr-2"></i>
+                Key Features
+            </h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="border border-gray-200 rounded-lg p-4">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-2">
+                        <i class="fas fa-robot text-blue-600 mr-2"></i>
+                        AI-Powered Analysis
+                    </h3>
+                    <p class="text-gray-700">Automatically evaluates articles using configurable AI models to identify genuine health emergency signals and assess risk levels.</p>
+                </div>
+                
+                <div class="border border-gray-200 rounded-lg p-4">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-2">
+                        <i class="fas fa-filter text-green-600 mr-2"></i>
+                        Advanced Filtering
+                    </h3>
+                    <p class="text-gray-700">Multi-criteria filtering system supporting article status, signal classification, countries, hazards, and date ranges with timezone support.</p>
+                </div>
+                
+                <div class="border border-gray-200 rounded-lg p-4">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-2">
+                        <i class="fas fa-search text-purple-600 mr-2"></i>
+                        Comprehensive Search
+                    </h3>
+                    <p class="text-gray-700">Keyword search across article titles, summaries, AI assessments, countries, hazards, and all content fields.</p>
+                </div>
+                
+                <div class="border border-gray-200 rounded-lg p-4">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-2">
+                        <i class="fas fa-tasks text-red-600 mr-2"></i>
+                        Batch Operations
+                    </h3>
+                    <p class="text-gray-700">Bulk actions for flagging, discarding, and exporting multiple articles simultaneously to streamline workflow.</p>
+                </div>
+                
+                <div class="border border-gray-200 rounded-lg p-4">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-2">
+                        <i class="fas fa-chart-bar text-orange-600 mr-2"></i>
+                        Analytics Dashboard
+                    </h3>
+                    <p class="text-gray-700">Statistical overview with counts by status and signal type, plus top countries and hazards analysis.</p>
+                </div>
+                
+                <div class="border border-gray-200 rounded-lg p-4">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-2">
+                        <i class="fas fa-download text-teal-600 mr-2"></i>
+                        Data Export
+                    </h3>
+                    <p class="text-gray-700">CSV export functionality with all article data, AI assessments, and metadata for external analysis.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Workflow -->
+        <section id="workflow" class="bg-white rounded-lg shadow-sm p-6 mb-6 doc-section">
+            <h2 class="text-2xl font-bold text-gray-900 mb-4">
+                <i class="fas fa-flow-chart text-indigo-600 mr-2"></i>
+                Typical Workflow
+            </h2>
+            <div class="space-y-6">
+                <div class="flex items-start space-x-4">
+                    <div class="flex-shrink-0 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold">1</div>
+                    <div>
+                        <h3 class="text-lg font-semibold text-gray-800">Configure System</h3>
+                        <p class="text-gray-700">Set up EIOS tags, AI provider credentials, and risk evaluation prompts in the Configuration panel.</p>
+                    </div>
+                </div>
+                
+                <div class="flex items-start space-x-4">
+                    <div class="flex-shrink-0 w-8 h-8 bg-green-600 text-white rounded-full flex items-center justify-center font-bold">2</div>
+                    <div>
+                        <h3 class="text-lg font-semibold text-gray-800">Fetch Articles</h3>
+                        <p class="text-gray-700">Use "Fetch Articles" button or enable the scheduler for automatic hourly fetching from EIOS.</p>
+                    </div>
+                </div>
+                
+                <div class="flex items-start space-x-4">
+                    <div class="flex-shrink-0 w-8 h-8 bg-purple-600 text-white rounded-full flex items-center justify-center font-bold">3</div>
+                    <div>
+                        <h3 class="text-lg font-semibold text-gray-800">Review Articles</h3>
+                        <p class="text-gray-700">Browse articles, filter by "True Signal" to see AI-identified emergency signals, and review AI assessments.</p>
+                    </div>
+                </div>
+                
+                <div class="flex items-start space-x-4">
+                    <div class="flex-shrink-0 w-8 h-8 bg-yellow-600 text-white rounded-full flex items-center justify-center font-bold">4</div>
+                    <div>
+                        <h3 class="text-lg font-semibold text-gray-800">Flag Important Articles</h3>
+                        <p class="text-gray-700">Use "Flag Selected" to mark articles that require follow-up or further investigation.</p>
+                    </div>
+                </div>
+                
+                <div class="flex items-start space-x-4">
+                    <div class="flex-shrink-0 w-8 h-8 bg-red-600 text-white rounded-full flex items-center justify-center font-bold">5</div>
+                    <div>
+                        <h3 class="text-lg font-semibold text-gray-800">Clean Up</h3>
+                        <p class="text-gray-700">Use "Discard Non-Flagged" to clean up processed articles, keeping only flagged items for ongoing monitoring.</p>
+                    </div>
+                </div>
+                
+                <div class="flex items-start space-x-4">
+                    <div class="flex-shrink-0 w-8 h-8 bg-indigo-600 text-white rounded-full flex items-center justify-center font-bold">6</div>
+                    <div>
+                        <h3 class="text-lg font-semibold text-gray-800">Export Data</h3>
+                        <p class="text-gray-700">Export filtered results to CSV for reporting, analysis, or integration with other systems.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Filtering & Search -->
+        <section id="filtering" class="bg-white rounded-lg shadow-sm p-6 mb-6 doc-section">
+            <h2 class="text-2xl font-bold text-gray-900 mb-4">
+                <i class="fas fa-filter text-indigo-600 mr-2"></i>
+                Filtering & Search
+            </h2>
+            
+            <div class="space-y-6">
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-800 mb-3">Filter Articles</h3>
+                    <p class="text-gray-700 mb-2">Multi-select dropdown with AND logic. Combine multiple criteria:</p>
+                    <ul class="list-disc list-inside text-gray-700 space-y-1 ml-4">
+                        <li><strong>Pinned/Unpinned:</strong> Articles marked as important in EIOS</li>
+                        <li><strong>Flagged/Unflagged:</strong> Articles you've manually flagged for review</li>
+                        <li><strong>True Signal/Not Signal:</strong> AI-assessed emergency signals</li>
+                    </ul>
+                </div>
+                
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-800 mb-3">Search</h3>
+                    <p class="text-gray-700 mb-2">Keyword search across multiple fields:</p>
+                    <ul class="list-disc list-inside text-gray-700 space-y-1 ml-4">
+                        <li>Article titles and summaries (original and translated)</li>
+                        <li>AI risk assessments and justifications</li>
+                        <li>Extracted countries and hazards</li>
+                        <li>All article content and metadata</li>
+                    </ul>
+                    <p class="text-gray-700 mt-2"><em>Case-insensitive partial matching (e.g., "cycl" matches "Cyclone")</em></p>
+                </div>
+                
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-800 mb-3">Countries & Hazards</h3>
+                    <p class="text-gray-700">Dynamic filters showing countries and hazards found in currently filtered articles. Select multiple options to narrow results further.</p>
+                </div>
+                
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-800 mb-3">Date & Time Range</h3>
+                    <p class="text-gray-700">Filter by AI processing date (not publication date). Supports hourly precision and automatically handles timezone conversion to UTC.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Article Actions -->
+        <section id="actions" class="bg-white rounded-lg shadow-sm p-6 mb-6 doc-section">
+            <h2 class="text-2xl font-bold text-gray-900 mb-4">
+                <i class="fas fa-tools text-indigo-600 mr-2"></i>
+                Article Actions
+            </h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-800 mb-3">Selection Actions</h3>
+                    <ul class="space-y-2 text-gray-700">
+                        <li><strong>Select All:</strong> Select all articles on current page</li>
+                        <li><strong>Unselect All:</strong> Clear all selections</li>
+                    </ul>
+                </div>
+                
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-800 mb-3">Batch Actions</h3>
+                    <ul class="space-y-2 text-gray-700">
+                        <li><strong>Flag Selected:</strong> Mark for review/follow-up</li>
+                        <li><strong>Discard Selected:</strong> Mark as processed (not deleted)</li>
+                        <li><strong>Export Selected:</strong> Download as CSV</li>
+                    </ul>
+                </div>
+                
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-800 mb-3">Bulk Operations</h3>
+                    <ul class="space-y-2 text-gray-700">
+                        <li><strong>Discard Non-Flagged:</strong> Clean up all unflagged articles</li>
+                        <li><strong>Export All:</strong> Download all filtered results</li>
+                    </ul>
+                </div>
+                
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-800 mb-3">Article Status</h3>
+                    <ul class="space-y-2 text-gray-700">
+                        <li><strong>New:</strong> Recently processed articles</li>
+                        <li><strong>Flagged:</strong> Marked for review</li>
+                        <li><strong>Discarded:</strong> Processed and archived</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- Configuration -->
+        <section id="configuration" class="bg-white rounded-lg shadow-sm p-6 mb-6 doc-section">
+            <h2 class="text-2xl font-bold text-gray-900 mb-4">
+                <i class="fas fa-cog text-indigo-600 mr-2"></i>
+                Configuration
+            </h2>
+            
+            <div class="space-y-6">
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-800 mb-3">EIOS Settings</h3>
+                    <ul class="list-disc list-inside text-gray-700 space-y-1 ml-4">
+                        <li><strong>Tags:</strong> Comma-separated list of EIOS tags to fetch (e.g., "ephem emro, other tag")</li>
+                    </ul>
+                </div>
+                
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-800 mb-3">AI Provider Configuration</h3>
+                    <div class="space-y-3">
+                        <div>
+                            <h4 class="font-medium text-gray-800">OpenAI</h4>
+                            <p class="text-gray-700">Configure API key, base URL, and model (e.g., gpt-4, gpt-3.5-turbo)</p>
+                        </div>
+                        <div>
+                            <h4 class="font-medium text-gray-800">DeepSeek</h4>
+                            <p class="text-gray-700">Alternative AI provider with own API credentials</p>
+                        </div>
+                        <div>
+                            <h4 class="font-medium text-gray-800">Local LLM</h4>
+                            <p class="text-gray-700">Connect to local language models (e.g., Ollama, LM Studio)</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-800 mb-3">Risk Evaluation Prompt</h3>
+                    <p class="text-gray-700">Customize how the AI evaluates articles. Use {text} placeholder where article content should be inserted.</p>
+                </div>
+                
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-800 mb-3">Database Cleanup</h3>
+                    <p class="text-gray-700">Remove old processed articles by date to manage database size. Includes preview functionality before deletion.</p>
+                </div>
+                
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-800 mb-3">Scheduler</h3>
+                    <p class="text-gray-700">Enable automatic hourly fetching and processing of new articles from EIOS. Can be started/stopped from the main interface.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <div class="text-center text-gray-500 text-sm mt-8 pt-8 border-t border-gray-200">
+            <p>EIOS Article Management Application - AI-powered health emergency intelligence monitoring</p>
+        </div>
+    </main>
+</body>
+</html>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard - EIOS Signal Management</title>
+    <title>Dashboard - EIOS Article Management</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
@@ -19,7 +19,7 @@
                 <div class="flex space-x-2">
                     <a href="index.html" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors">
                         <i class="fas fa-list"></i>
-                        <span>Signals</span>
+                        <span>Articles</span>
                     </a>
                 </div>
             </div>
@@ -30,20 +30,23 @@
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
         <!-- Date Filter -->
         <div class="bg-white rounded-lg shadow-sm p-6">
-            <h2 class="text-lg font-medium text-gray-900 mb-4">Filter by Process Date</h2>
+            <h2 class="text-lg font-medium text-gray-900 mb-4">
+                Filter by Process Date & Time
+                <span id="dashboardTimezoneIndicator" class="text-sm text-gray-500 font-normal ml-2"></span>
+            </h2>
             <div class="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-4 items-end">
                 <div class="flex-1">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
-                    <input type="date" id="dashboardStartDate" class="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent w-full">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Start Date & Time</label>
+                    <input type="datetime-local" id="dashboardStartDate" class="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent w-full">
                 </div>
                 <div class="flex-1">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">End Date</label>
-                    <input type="date" id="dashboardEndDate" class="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent w-full">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">End Date & Time</label>
+                    <input type="datetime-local" id="dashboardEndDate" class="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent w-full">
                 </div>
                 <div class="flex-1">
                     <label class="block text-sm font-medium text-gray-700 mb-1">Signal Type</label>
                     <select id="dashboardIsSignal" class="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent w-full">
-                        <option value="all">All Signals</option>
+                        <option value="all">All Articles</option>
                         <option value="Yes">True Signals</option>
                         <option value="No">Not Signals</option>
                     </select>

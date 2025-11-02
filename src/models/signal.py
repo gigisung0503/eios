@@ -1,8 +1,8 @@
 from datetime import datetime
 from src.models.db import db
 
-class RawSignal(db.Model):
-    __tablename__ = 'raw_signals'
+class RawArticle(db.Model):
+    __tablename__ = 'raw_articles'
     
     id = db.Column(db.Integer, primary_key=True)
     rss_item_id = db.Column(db.String(255), unique=True, nullable=False)
@@ -27,8 +27,8 @@ class RawSignal(db.Model):
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
 
-class ProcessedSignal(db.Model):
-    __tablename__ = 'processed_signals'
+class ProcessedArticle(db.Model):
+    __tablename__ = 'processed_articles'
     
     id = db.Column(db.Integer, primary_key=True)
     rss_item_id = db.Column(db.String(255), unique=True, nullable=False)
@@ -43,9 +43,9 @@ class ProcessedSignal(db.Model):
     is_pinned = db.Column(db.Boolean, default=False)  # Whether article was pinned in EIOS
     processed_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    # Relationship to raw signal
-    raw_signal_id = db.Column(db.Integer, db.ForeignKey('raw_signals.id'))
-    raw_signal = db.relationship('RawSignal', backref='processed_signal')
+    # Relationship to raw article
+    raw_article_id = db.Column(db.Integer, db.ForeignKey('raw_articles.id'))
+    raw_article = db.relationship('RawArticle', backref='processed_article')
 
     def get_justification(self) -> str:
         """Extract the justification text from the risk assessment field."""
@@ -74,7 +74,7 @@ class ProcessedSignal(db.Model):
             'status': self.status,
             'is_pinned': self.is_pinned,
             'processed_at': self.processed_at.isoformat() if self.processed_at else None,
-            'raw_signal': self.raw_signal.to_dict() if self.raw_signal else None
+            'raw_article': self.raw_article.to_dict() if self.raw_article else None
         }
 
 class UserConfig(db.Model):
@@ -93,8 +93,8 @@ class UserConfig(db.Model):
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
 
-class ProcessedSignalID(db.Model):
-    __tablename__ = 'processed_signal_ids'
+class ProcessedArticleID(db.Model):
+    __tablename__ = 'processed_article_ids'
     
     id = db.Column(db.Integer, primary_key=True)
     rss_item_id = db.Column(db.String(255), unique=True, nullable=False)

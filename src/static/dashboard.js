@@ -5,8 +5,26 @@ const topListData = {};
 
 document.addEventListener('DOMContentLoaded', () => {
     bindEvents();
+    displayDashboardTimezoneInfo();
     loadDashboard();
 });
+
+function displayDashboardTimezoneInfo() {
+    // Display timezone information to user
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const offset = new Date().getTimezoneOffset();
+    const offsetHours = Math.abs(offset / 60);
+    const offsetSign = offset <= 0 ? '+' : '-';
+    const offsetString = `UTC${offsetSign}${offsetHours.toString().padStart(2, '0')}:${(Math.abs(offset) % 60).toString().padStart(2, '0')}`;
+    
+    const timezoneText = `(${timezone} - ${offsetString})`;
+    
+    // Update dashboard timezone indicator
+    const dashboardTimezoneIndicator = document.getElementById("dashboardTimezoneIndicator");
+    if (dashboardTimezoneIndicator) {
+        dashboardTimezoneIndicator.textContent = timezoneText;
+    }
+}
 
 function bindEvents() {
     document.getElementById('applyDateFilter').addEventListener('click', () => {

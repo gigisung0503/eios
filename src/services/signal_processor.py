@@ -4,11 +4,11 @@ import re
 import json
 import logging
 from typing import List, Dict, Any, Tuple
-from src.models.signal import RawSignal, ProcessedSignal, ProcessedSignalID, db
+from src.models.signal import RawArticle, ProcessedArticle, ProcessedArticleID, db
 
 logger = logging.getLogger("signal_processor")
 logging.getLogger("werkzeug").setLevel(logging.ERROR)
-class SignalProcessor:
+class ArticleProcessor:
     def __init__(self):
         """
         Initialize the signal processor.
@@ -394,18 +394,18 @@ class SignalProcessor:
         """
         Check if a signal has already been processed.
         """
-        return ProcessedSignalID.query.filter_by(rss_item_id=rss_item_id).first() is not None
+        return ProcessedArticleID.query.filter_by(rss_item_id=rss_item_id).first() is not None
 
     def mark_as_processed(self, rss_item_id: str):
         """
         Mark a signal as processed to avoid reprocessing.
         """
         if not self.is_already_processed(rss_item_id):
-            processed_id = ProcessedSignalID(rss_item_id=rss_item_id)
+            processed_id = ProcessedArticleID(rss_item_id=rss_item_id)
             db.session.add(processed_id)
             db.session.commit()
 
-    def save_raw_signal(self, article: Dict[str, Any]) -> RawSignal:
+    def save_raw_article(self, article: Dict[str, Any]) -> RawArticle:
         """
         Save raw signal data to database.
         """
@@ -413,11 +413,11 @@ class SignalProcessor:
         combined_text = self.combine_text_fields(article)
         
         # Check if already exists
-        existing = RawSignal.query.filter_by(rss_item_id=rss_item_id).first()
+        existing = RawArticle.query.filter_by(rss_item_id=rss_item_id).first()
         if existing:
             return existing
         
-        raw_signal = RawSignal(
+        raw_article = RawArticle(
             rss_item_id=rss_item_id,
             original_title=article.get('originalTitle', ''),
             title=article.get('title', ''),
@@ -427,11 +427,11 @@ class SignalProcessor:
             combined_text=combined_text
         )
         
-        db.session.add(raw_signal)
+        db.session.add(raw_article)
         db.session.commit()
-        return raw_signal
+        return raw_article
 
-    def process_signal(self, raw_signal: RawSignal, is_pinned: bool = False) -> ProcessedSignal:
+    def process_article(self, raw_article: RawArticle, is_pinned: bool = False) -> ProcessedArticle:
         """
         Process a single signal using AI evaluation.
 
@@ -446,18 +446,18 @@ class SignalProcessor:
 
         The parts are separated by ``||||``. Parsing extracts the signal flag,
         country list, justification, and hazard type. These values populate
-        the ``ProcessedSignal`` record. Vulnerability, coping and total
+        the ``ProcessedArticle`` record. Vulnerability, coping and total
         risk scores are set to ``None`` because they are no longer part of
         the consolidated evaluation.
         """
-        logger.info(f"Processing signal: {raw_signal.rss_item_id}")
-        #logger.info(f" signal: {raw_signal.combined_text}")
-        #logger.info(f"processed: {ProcessedSignal.status}")
-        #logger.info(f"processed: {ProcessedSignal.__tablename__}")
+        logger.info(f"Processing article: {raw_article.rss_item_id}")
+        #logger.info(f" signal: {raw_article.combined_text}")
+        #logger.info(f"processed: {ProcessedArticle.status}")
+        #logger.info(f"processed: {ProcessedArticle.__tablename__}")
         
         # Perform a single AI call for risk evaluation
         risk_response = self.ask_ai(
-            self.risk_evaluation_prompt.format(text=raw_signal.combined_text))
+            self.risk_evaluation_prompt.format(text=raw_article.combined_text))
 
         # Default values
         extracted_countries = ""
@@ -528,8 +528,8 @@ class SignalProcessor:
         risk_assessment_text = risk_response
 
         # Create processed signal
-        processed_signal = ProcessedSignal(
-            rss_item_id=raw_signal.rss_item_id,
+        processed_signal = ProcessedArticle(
+            rss_item_id=raw_article.rss_item_id,
             extracted_countries=extracted_countries,
             extracted_hazards=extracted_hazards,
             risk_signal_assessment=risk_assessment_text,
@@ -538,30 +538,30 @@ class SignalProcessor:
             total_risk_score=total,
             is_signal=is_signal,
             is_pinned=is_pinned,
-            raw_signal_id=raw_signal.id
+            raw_article_id=raw_article.id
         )
         
         db.session.add(processed_signal)
         db.session.commit()
         
         # Mark as processed
-        self.mark_as_processed(raw_signal.rss_item_id)
+        self.mark_as_processed(raw_article.rss_item_id)
         
         # Rate limiting
         time.sleep(self.rate_limit_sleep_sec)
         
         return processed_signal
 
-    def process_signals_batch(self, articles: List[Dict[str, Any]], batch_size: int = None) -> List[ProcessedSignal]:
+    def process_articles_batch(self, articles: List[Dict[str, Any]], batch_size: int = None) -> List[ProcessedArticle]:
         """
-        Process a batch of signals, filtering out already processed ones.
+        Process a batch of articles, filtering out already processed ones.
         
         Args:
             articles: List of article dictionaries from EIOS
-            batch_size: Maximum number of signals to process in this batch. If None, process all signals.
+            batch_size: Maximum number of articles to process in this batch. If None, process all articles.
             
         Returns:
-            List of processed signals
+            List of processed articles
         """
         if batch_size is None:
             batch_size = len(articles)
@@ -582,22 +582,22 @@ class SignalProcessor:
             
             try:
                 # Save raw signal
-                raw_signal = self.save_raw_signal(article)
+                raw_article = self.save_raw_article(article)
                 
                 # Get pinned status from article
                 is_pinned = article.get('is_pinned', False)
                 
                 # Process signal
-                processed_signal = self.process_signal(raw_signal, is_pinned)
+                processed_signal = self.process_article(raw_article, is_pinned)
                 processed_signals.append(processed_signal)
                 processed_count += 1
                 
-                logger.info(f"Processed signal {processed_count}/{batch_size}: {rss_item_id} (pinned: {is_pinned})")
+                logger.info(f"Processed article {processed_count}/{batch_size}: {rss_item_id} (pinned: {is_pinned})")
                 
             except Exception as e:
-                logger.error(f"Error processing signal {rss_item_id}: {e}")
+                logger.error(f"Error processing article {rss_item_id}: {e}")
                 continue
         
-        logger.info(f"Batch processing complete. Processed {len(processed_signals)} signals.")
+        logger.info(f"Batch processing complete. Processed {len(processed_signals)} articles.")
         return processed_signals
 
