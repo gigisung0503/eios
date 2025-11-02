@@ -763,9 +763,6 @@ class SignalManager {
                         <div class="mb-2"><strong>Is signal:</strong> ${safeIsSignal}</div>
                         <div class="mb-2"><strong>Justification:</strong> ${safeJustification}</div>
                         <div class="mb-2"><strong>Hazards:</strong> ${safeHazards}</div>
-                        <hr class="my-2" />
-                        <div class="text-xs text-gray-600"><strong>Raw assessment:</strong></div>
-                        <div class="whitespace-pre-line text-xs text-gray-700">${safeRaw}</div>
                     </div>
                 </div>
             </div>
