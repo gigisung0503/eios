@@ -1150,15 +1150,9 @@ class ArticleManager {
     async saveConfig() {
         const tags = document.getElementById("tagsInput").value.trim();
         const provider = document.getElementById("providerSelect").value;
-        // Gather per-provider settings
+        // Gather configuration settings (API keys are managed via .env file)
         const configPayload = {
             provider,
-            openai_api_key: document.getElementById("openaiKeyInput").value.trim(),
-            openai_api_base: document.getElementById("openaiBaseInput").value.trim(),
-            deepseek_api_key: document.getElementById("deepseekKeyInput").value.trim(),
-            deepseek_api_base: document.getElementById("deepseekBaseInput").value.trim(),
-            local_api_key: document.getElementById("localKeyInput").value.trim(),
-            local_api_base: document.getElementById("localBaseInput").value.trim(),
             ai_model: document.getElementById("modelNameInput").value.trim(),
             risk_prompt: document.getElementById("riskEvaluationPrompt").value.trim()
         };
@@ -1208,22 +1202,8 @@ class ArticleManager {
      * Update which provider configuration fields are visible based on the selected provider.
      */
     updateProviderUI() {
-        const provider = document.getElementById("providerSelect") ? document.getElementById("providerSelect").value : "openai";
-        const openaiSection = document.getElementById("openaiConfig");
-        const deepseekSection = document.getElementById("deepseekConfig");
-        const localSection = document.getElementById("localConfig");
-        // Hide all
-        [openaiSection, deepseekSection, localSection].forEach(el => {
-            if (el) el.classList.add("hidden");
-        });
-        // Show selected
-        if (provider === "openai" && openaiSection) {
-            openaiSection.classList.remove("hidden");
-        } else if (provider === "deepseek" && deepseekSection) {
-            deepseekSection.classList.remove("hidden");
-        } else if (provider === "local" && localSection) {
-            localSection.classList.remove("hidden");
-        }
+        // API key configuration sections have been removed for security
+        // All provider-specific settings are now managed via .env file
     }
 
     /**
@@ -1240,13 +1220,7 @@ class ArticleManager {
                 const provider = cfg.provider || "openai";
                 const providerSelect = document.getElementById("providerSelect");
                 if (providerSelect) providerSelect.value = provider;
-                // Populate API keys and bases
-                document.getElementById("openaiKeyInput").value = cfg.openai_api_key || "";
-                document.getElementById("openaiBaseInput").value = cfg.openai_api_base || "";
-                document.getElementById("deepseekKeyInput").value = cfg.deepseek_api_key || "";
-                document.getElementById("deepseekBaseInput").value = cfg.deepseek_api_base || "";
-                document.getElementById("localKeyInput").value = cfg.local_api_key || "";
-                document.getElementById("localBaseInput").value = cfg.local_api_base || "";
+                // API keys are now managed via .env file for security
                 document.getElementById("modelNameInput").value = cfg.ai_model || "";
                 document.getElementById("riskEvaluationPrompt").value = cfg.risk_prompt || "";
                 // Update UI to show correct provider section
